@@ -1,0 +1,89 @@
+linters:
+  enable:
+    - govet          # Go vet static analysis
+    - errcheck       # Check unchecked errors
+    - staticcheck    # Go static analysis
+    - gosec          # Security inspection
+    - gocyclo        # Cyclomatic complexity check
+    - godot          # Check comments have periods
+    - misspell       # Spell checking
+    - goimports      # Import management
+    - ineffassign    # Detect ineffectual assignments
+    - nakedret       # Detect naked returns
+    - prealloc       # Find slice declarations that could potentially be preallocated
+    - unconvert      # Remove unnecessary type conversions
+    - unused         # Check for unused constants, variables, functions and types
+  disable:
+    - exhaustive     # Too strict for MVP
+    - funlen         # Will be enabled later
+    - lll            # Disable line length limit for now
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+
+  govet:
+    enable-all: true
+    disable:
+      - shadow       # Can be noisy
+
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  misspell:
+    locale: US
+
+  godot:
+    scope: all
+    exclude:
+      - "^\\.+"
+      - "^[0-9]+\\."
+
+  goimports:
+    local-prefixes: github.com/yourusername/kore
+
+  gocyclo:
+    min-complexity: 15
+
+  prealloc:
+    simple-result: true
+    range-loops: true
+    for-loops: false
+
+run:
+  timeout: 5m
+  go: "1.21"
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  # Exclude specific issues
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+
+    # Exclude known linters from partially hard-vendored code
+    - path: internal/hardcoded_vendor/
+      linters:
+        - gosec
+
+  # Exclude some issues from test files
+  exclude:
+    # G104: Errors unhandled from subprocesses
+    - "Error return value of .((\\.|\\w*)+|\\(\\))? is not checked"
+
+    # G307: Deferring a method which returns an error but not checking it
+    - "Deferring.*"
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: true
+  sort-results: true
