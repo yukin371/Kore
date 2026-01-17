@@ -17,6 +17,50 @@
 
 ---
 
+### 🌟 从开源项目学到的改进 (Phase 1)
+
+#### 智能工作流增强
+
+- **🔄 Ralph Loop** - 自引用开发循环
+  - 持续执行直到任务完成，不会中途放弃
+  - 检测 `DONE` 标记来判断完成
+  - 激活方式：在提示中包含 `ralph-loop` 或配置启用
+  - 灵感来源: [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
+
+- **⚡ 关键词魔法** - 自动模式切换
+  - `ultrawork` / `ulw` → 超级工作模式（并行智能体编排）
+  - `search` / `搜索` → 深度搜索模式（探索 + Librarian 并行）
+  - `analyze` / `分析` → 深度分析模式（Oracle 多阶段咨询）
+  - 激活方式：在提示中包含关键词即可自动激活
+  - 灵感来源: [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
+
+- **📊 上下文窗口监控** - 智能 Token 管理
+  - 70% 使用率：警告用户
+  - 85% 使用率：自动压缩会话
+  - 实时显示使用率统计
+  - 优化上下文传递策略
+  - 灵感来源: [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
+
+#### 使用示例
+
+```bash
+# 超级工作模式（自动并行执行所有工具）
+kore chat
+> 使用 ultrawork 模式重构整个用户认证模块
+
+# 深度搜索模式
+kore chat
+> 使用 search 模式查找所有文件上传漏洞
+
+# Ralph Loop 模式（持续执行直到完成）
+kore chat
+> 使用 ralph-loop 模式实现 REST API 并添加测试
+```
+
+---
+
+## 📦 安装
+
 ## 📦 安装
 
 ### 从源码安装
@@ -297,10 +341,50 @@ MIT License - 详见 LICENSE 文件
 
 ## 🙏 致谢
 
-- 灵感来源：[Claude Code](https://claude.ai/code)
-- 构建工具：[Bubble Tea](https://github.com/charmbracelet/bubbletea)
-- LLM 集成：[go-openai](https://github.com/sashabaranov/go-openai)
-- CLI 框架：[Cobra](https://github.com/spf13/cobra)
+Kore 2.0 站在巨人的肩膀上，我们深深感谢以下开源项目：
+
+### 核心灵感来源
+
+- **[Claude Code](https://claude.ai/code)** - AI 编程助手的先驱
+- **[OpenCode](https://github.com/anomalyco/opencode)** - 开源 AI 编程代理（50k+ Stars）
+  - 提供了 Agent-Centric 架构灵感
+  - TUI 优先的设计理念
+  - LSP 集成的参考实现
+
+### 特别感谢
+
+- **[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)** by [@code-yeongyu](https://github.com/code-yeongyu)
+  - ⭐ **Sisyphus 智能体编排系统** - 多智能体协作模式
+  - ⭐ **Ralph Loop** - 自引用开发循环，持续执行直到任务完成
+  - ⭐ **关键词魔法** - `ultrawork` 自动激活高性能模式
+  - ⭐ **上下文窗口监控** - 智能的 token 使用率管理（70%+ 警告，85% 压缩）
+  - ⭐ **Todo 继续执行器** - 强制智能体完成所有未完成的工作
+  - ⭐ **AGENTS.md 自动注入** - 向上遍历目录树，收集项目上下文
+  - ⭐ **LSP/AST 工具增强** - `lsp_prepare_rename`、`ast_grep_search/replace`
+  - 📚 [详细改进分析](docs/improvements-from-opensource.md#oh-my-opencode-可吸收的特性)
+
+- **[opencode-ai/opencode](https://github.com/opencode-ai/opencode)** (已归档，项目转移到 [Crush](https://github.com/charmbracelet/crush))
+  - ⭐ **Go 语言 TUI 实现** - 基于 Bubble Tea 的终端组件库
+  - ⭐ **LSP 客户端架构** - JSON-RPC over Stdio 的参考实现
+  - ⭐ **配置管理系统** - 多位置加载、JSONC 支持
+  - ⭐ **SQLite 持久化层** - 会话和消息存储设计
+  - 📚 [可复用组件分析](docs/improvements-from-opensource.md#opencode-aiopencode-可复用的代码)
+
+### 构建工具和库
+
+- **[Bubble Tea](https://github.com/charmbracelet/bubbletea)** - Elm 架构的 TUI 框架
+- **[go-openai](https://github.com/sashabaranov/go-openai)** - OpenAI API 集成
+- **[Cobra](https://github.com/spf13/cobra)** - CLI 框架
+- **[Lipgloss](https://github.com/charmbracelet/lipgloss)** - 样式库
+- **[Bubbles](https://github.com/charmbracelet/bubbles)** - TUI 组件库
+- **[sourcegraph/go-lsp](https://github.com/sourcegraph/go-lsp)** - LSP Go 语言支持
+- **[sourcegraph/jsonrpc2](https://github.com/sourcegraph/jsonrpc2)** - JSON-RPC 2.0 实现
+
+### 社区和学习资源
+
+- **[AmpCode](https://ampcode.com)** - Agent 工作流参考
+- **[charmbracelet](https://github.com/charmbracelet)** - 优秀的 Go CLI/TUI 工具生态
+- **[OpenCommunity](https://github.com/sst/opencode)** - OpenCode 社区讨论和分享
 
 ---
 

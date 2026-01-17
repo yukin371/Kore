@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 )
 
 // ========== 状态枚举定义 ==========
@@ -93,6 +94,15 @@ type DiffConfirmMsg struct {
 	Reply    chan bool // 用户选择的回复通道
 }
 
+// ShowModalMsg 显示 Modal 消息
+type ShowModalMsg struct {
+	Type      ModalType         // Modal 类型
+	Title     string            // 标题
+	Content   string            // 内容
+	OnConfirm func() bool       // 确认回调
+	Reply     chan bool         // 用户选择的回复通道
+}
+
 // UserInputMsg 用户输入提交消息
 type UserInputMsg struct {
 	Input string       // 用户输入的内容
@@ -150,6 +160,12 @@ type Model struct {
 	diffConfirmText   string
 	diffConfirmReply  chan bool
 	diffConfirmChoice int
+
+	// 【新增】Modal 组件
+	modal *ModalComponent
+
+	// 【新增】欢迎界面组件
+	welcome *WelcomeComponent
 
 	// 视口设置（支持滚动）
 	scrollOffset int
@@ -322,8 +338,10 @@ func NewModel() *Model {
 		confirmChoice:     0,
 		diffConfirmChoice: 0,
 		styles:            DefaultStyles(),
-		animatedStatus:    animStatus, // 【新增】
-		viewport:          vp,          // 【新增】
+		animatedStatus:    animStatus,           // 【新增】
+		viewport:          vp,                   // 【新增】
+		modal:             NewModalComponent(),   // 【新增】Modal 组件
+		welcome:           NewWelcomeComponent(), // 【新增】欢迎界面组件
 	}
 }
 
@@ -336,7 +354,7 @@ func (m *Model) SetInputCallback(callback func(string)) {
 
 // Init 实现 tea.Model 接口 - 初始化
 func (m *Model) Init() tea.Cmd {
-	// 启动两个定时器：一个用于 UI 刷新，一个用于 Spinner 动画
+	// 启动定时器：UI 刷新、Spinner 动画、欢迎界面动画
 	return tea.Batch(
 		tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 			return TickMsg(t)
@@ -344,12 +362,35 @@ func (m *Model) Init() tea.Cmd {
 		tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 			return SpinnerTickMsg(t)
 		}),
+		m.welcome.StartTick(), // 【新增】启动欢迎界面动画
 	)
 }
 
 // Update 实现 tea.Model 接口 - 处理消息更新
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	// 【新增】欢迎界面状态处理
+	if m.welcome != nil && m.welcome.IsVisible() {
+		visible, cmd := m.welcome.Update(msg)
+		if !visible {
+			// 欢迎界面已关闭
+			m.welcome.Hide()
+		}
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		// 如果欢迎界面仍然可见，返回（不处理其他消息）
+		if visible {
+			return m, tea.Batch(cmds...)
+		}
+		// 欢迎界面已关闭，继续处理其他消息
+	}
+
+	// 【新增】Modal 状态下，拦截所有按键
+	if m.modal != nil && m.modal.IsVisible() {
+		return m.handleModalInput(msg)
+	}
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -467,6 +508,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffConfirmChoice = 0
 		return m, nil
 
+	case ShowModalMsg:
+		// 【新增】显示 Modal
+		if m.modal != nil {
+			m.modal.Show(msg.Type, msg.Title, msg.Content, msg.OnConfirm, msg.Reply)
+		}
+		return m, nil
+
 	case TickMsg:
 		// 定时刷新：如果有流式内容，刷新到消息列表
 		if m.currentStream.Len() > 0 {
@@ -504,12 +552,41 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View 实现 tea.Model 接口 - 渲染视图
 func (m *Model) View() string {
-	// 如果在确认对话框模式，显示确认对话框
+	// 【新增】欢迎界面优先级最高（启动时显示）
+	if m.welcome != nil && m.welcome.IsVisible() {
+		return m.welcome.Render(m.width, m.height)
+	}
+
+	// 【新增】Modal 模式优先级次高
+	if m.modal != nil && m.modal.IsVisible() {
+		// 1. 渲染变暗的底层视图
+		dimmedView := m.renderDimmedView()
+
+		// 2. 渲染 Modal 框
+		modalView := m.renderModal()
+
+		// 3. 使用 lipgloss.Place 将 Modal 居中放置
+		finalView := lipgloss.Place(
+			m.width, m.height,
+			lipgloss.Center, lipgloss.Center,
+			modalView,
+			lipgloss.WithWhitespaceChars(" "),
+			lipgloss.WithWhitespaceForeground(lipgloss.Color("#1a1b26")),
+			lipgloss.WithWhitespaceBackground(lipgloss.Color("#1a1b26")),
+		)
+
+		// 叠加底层视图（变暗）
+		// 注意：由于终端限制，我们简单地返回组合视图
+		// 在实际显示时，Modal 的 solid background 会遮挡底层
+		return lipgloss.JoinVertical(lipgloss.Left, dimmedView, finalView)
+	}
+
+	// 如果在确认对话框模式，显示确认对话框（保留兼容）
 	if m.confirming {
 		return m.viewConfirmDialog()
 	}
 
-	// 如果在 Diff 确认对话框模式，显示 Diff 对话框
+	// 如果在 Diff 确认对话框模式，显示 Diff 对话框（保留兼容）
 	if m.diffConfirming {
 		return m.viewDiffConfirmDialog()
 	}
@@ -800,9 +877,20 @@ func (m *Model) renderMessagesContent() string {
 
 	var b strings.Builder
 
+	// 计算可用宽度（viewport 宽度 - 左右边距）
+	// viewport 默认有 Padding(0, 1)，所以减去 2
+	availableWidth := m.width - 4
+	if availableWidth < 20 {
+		availableWidth = 20 // 最小宽度保护
+	}
+
 	for i, msg := range m.messages {
+		// 【新增】使用 wordwrap.String 进行文本换行
+		// 这样长文本会自动换行，不会超出视口宽度
+		wrapped := wordwrap.String(msg, availableWidth)
+
 		// 渲染消息
-		rendered := m.styles.Message.Render(msg)
+		rendered := m.styles.Message.Render(wrapped)
 
 		// 【修复】清理消息开头和结尾的多余换行
 		// 保留内容的换行，但移除首尾的空行
@@ -1059,5 +1147,227 @@ func (m *Model) handleStatusReset() (tea.Model, tea.Cmd) {
 		m.animatedStatus.message = "准备就绪"
 		m.animatedStatus.progress = 0
 	}
+	return m, nil
+}
+
+// ========== Modal Overlay 渲染方法 ==========
+
+// renderDimmedView 渲染变暗的底层视图（Modal 模式）
+func (m *Model) renderDimmedView() string {
+	if m.modal == nil {
+		return ""
+	}
+
+	dimStyle := m.modal.GetStyle().DimStyle
+
+	// 渲染组件原始内容，然后应用 Dim 样式
+	inputView := dimStyle.Render(m.renderInputAreaRaw())
+	statusBarView := dimStyle.Render(m.renderAnimatedStatusBarRaw())
+	helpView := dimStyle.Render(m.renderHelpTextRaw())
+
+	// Viewport 内容也需要变暗
+	m.viewport.SetContent(dimStyle.Render(m.renderMessagesContentRaw()))
+
+	// 计算高度
+	bottomHeight := lipgloss.Height(inputView) +
+		lipgloss.Height(statusBarView) +
+		lipgloss.Height(helpView)
+
+	availableHeight := m.height - bottomHeight
+	if availableHeight < 5 {
+		availableHeight = 5
+	}
+	m.viewport.Height = availableHeight
+	m.viewport.Width = m.width
+
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.viewport.View(),
+		inputView,
+		statusBarView,
+		helpView,
+	)
+}
+
+// renderModal 渲染 Modal 框
+func (m *Model) renderModal() string {
+	if m.modal == nil {
+		return ""
+	}
+
+	state := m.modal.GetState()
+	style := m.modal.GetStyle()
+
+	var b strings.Builder
+
+	// 标题
+	title := style.Title.Render(state.Title)
+	b.WriteString(title)
+	b.WriteString("\n")
+
+	// 内容
+	switch state.Type {
+	case ModalConfirm:
+		content := style.Content.Render(state.Content)
+		b.WriteString(content)
+
+	case ModalDiff:
+		// Diff 内容，直接显示
+		diff := style.Content.Render(state.Content)
+		b.WriteString(diff)
+	}
+
+	b.WriteString("\n")
+
+	// 提示
+	hint := style.Content.Render(
+		"[Enter: 确认] [Esc: 取消]",
+	)
+	b.WriteString(hint)
+
+	// 应用边框和 Solid 背景
+	return style.Border.Render(
+		style.Background.Render(b.String()),
+	)
+}
+
+// renderInputAreaRaw 返回未渲染的输入区域原始内容
+func (m *Model) renderInputAreaRaw() string {
+	if m.inputActive {
+		return ">> " + m.textInput.Value()
+	}
+	return ">> (按 ESC 激活输入)"
+}
+
+// renderAnimatedStatusBarRaw 返回未渲染的状态栏原始内容
+func (m *Model) renderAnimatedStatusBarRaw() string {
+	status := m.animatedStatus
+	var statusText strings.Builder
+
+	switch status.state {
+	case StatusIdle:
+		statusText.WriteString("○ 准备就绪")
+	case StatusThinking, StatusReading, StatusSearching, StatusExecuting, StatusStreaming:
+		spinnerView := status.spinner.View()
+		if status.progress > 0 {
+			statusText.WriteString(fmt.Sprintf("%s %s [%d%%]",
+				spinnerView, status.message, status.progress))
+		} else {
+			statusText.WriteString(fmt.Sprintf("%s %s",
+				spinnerView, status.message))
+		}
+	case StatusSuccess:
+		statusText.WriteString(fmt.Sprintf("✓ %s", status.message))
+	case StatusError:
+		statusText.WriteString(fmt.Sprintf("✗ %s", status.message))
+	}
+
+	return statusText.String()
+}
+
+// renderHelpTextRaw 返回未渲染的帮助文本原始内容
+func (m *Model) renderHelpTextRaw() string {
+	var parts []string
+	parts = append(parts, "[Ctrl+↑/↓:滚动]")
+	parts = append(parts, "[ESC:输入]")
+
+	if m.animatedStatus.showDetails {
+		parts = append(parts, "[Ctrl+D:隐藏详情]")
+	} else {
+		parts = append(parts, "[Ctrl+D/Tab:显示详情]")
+	}
+
+	parts = append(parts, "[Enter:发送]")
+	parts = append(parts, "[Ctrl+C:退出]")
+
+	return " " + strings.Join(parts, " ") + " "
+}
+
+// renderMessagesContentRaw 返回未渲染的消息内容
+func (m *Model) renderMessagesContentRaw() string {
+	if len(m.messages) == 0 {
+		return "暂无消息..."
+	}
+
+	// 计算可用宽度
+	availableWidth := m.width - 4
+	if availableWidth < 20 {
+		availableWidth = 20
+	}
+
+	var b strings.Builder
+	for _, msg := range m.messages {
+		// 【新增】使用 wordwrap.String 进行文本换行
+		wrapped := wordwrap.String(msg, availableWidth)
+		b.WriteString(wrapped)
+		b.WriteString("\n\n")
+	}
+
+	// 添加当前流式内容
+	if m.currentStream.Len() > 0 {
+		streamContent := m.currentStream.String()
+		streamContent = strings.TrimLeft(streamContent, "\n")
+		streamContent = strings.TrimRight(streamContent, "\n")
+		if streamContent != "" {
+			// 【新增】流式内容也需要换行
+			wrappedStream := wordwrap.String(streamContent, availableWidth)
+			b.WriteString(wrappedStream)
+		}
+	}
+
+	return b.String()
+}
+
+// handleModalInput 处理 Modal 状态下的输入（事件拦截）
+func (m *Model) handleModalInput(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.modal == nil {
+		return m, nil
+	}
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "enter", " ":
+			// 确认
+			state := m.modal.GetState()
+
+			// 发送 true 到回复通道
+			if state.Reply != nil {
+				select {
+				case state.Reply <- true:
+					// 成功发送确认信号
+				default:
+					// 通道已关闭或已满，忽略
+				}
+				close(state.Reply)
+			}
+
+			// 关闭 Modal
+			m.modal.Hide()
+			return m, nil
+
+		case "esc", "q":
+			// 取消，关闭 Modal
+			state := m.modal.GetState()
+
+			// 发送 false 到回复通道
+			if state.Reply != nil {
+				select {
+				case state.Reply <- false:
+					// 成功发送取消信号
+				default:
+					// 通道已关闭或已满，忽略
+				}
+				close(state.Reply)
+			}
+
+			m.modal.Hide()
+			return m, nil
+
+		case "ctrl+c":
+			// 强制退出程序
+			return m, tea.Quit
+		}
+	}
+
 	return m, nil
 }

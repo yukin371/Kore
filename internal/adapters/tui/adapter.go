@@ -119,16 +119,19 @@ func (a *Adapter) RequestConfirm(action string, args string) bool {
 	// 创建回复通道
 	replyChan := make(chan bool)
 
-	// 发送确认对话框消息
-	a.program.Send(ConfirmMsg{
-		Action: action,
-		Args:   args,
-		Reply:  replyChan,
+	// 【修改】使用新的 ShowModalMsg
+	// 回复通道由 Model 的 handleModalInput 直接处理，无需 OnConfirm 回调
+	a.program.Send(ShowModalMsg{
+		Type:      ModalConfirm,
+		Title:     "⚠️  确认工具执行",
+		Content:   fmt.Sprintf("工具: %s\n\n参数: %s\n\n是否允许执行？", action, args),
+		OnConfirm: nil, // 不需要，Model 直接处理回复通道
+		Reply:     replyChan,
 	})
 
 	// 等待用户响应
 	result := <-replyChan
-	close(replyChan)
+	// 注意：不要关闭通道，Model 的 handleModalInput 已经负责关闭
 
 	return result
 }
@@ -151,16 +154,19 @@ func (a *Adapter) RequestConfirmWithDiff(path string, diffText string) bool {
 	// 创建回复通道
 	replyChan := make(chan bool)
 
-	// 发送 Diff 确认对话框消息
-	a.program.Send(DiffConfirmMsg{
-		Path:     path,
-		DiffText: diffText,
-		Reply:    replyChan,
+	// 【修改】使用新的 ShowModalMsg
+	// 回复通道由 Model 的 handleModalInput 直接处理，无需 OnConfirm 回调
+	a.program.Send(ShowModalMsg{
+		Type:      ModalDiff,
+		Title:     "📝 确认文件修改",
+		Content:   fmt.Sprintf("文件: %s\n\nDiff:\n%s\n\n是否应用修改？", path, diffText),
+		OnConfirm: nil, // 不需要，Model 直接处理回复通道
+		Reply:     replyChan,
 	})
 
 	// 等待用户响应
 	result := <-replyChan
-	close(replyChan)
+	// 注意：不要关闭通道，Model 的 handleModalInput 已经负责关闭
 
 	return result
 }

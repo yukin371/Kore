@@ -1,29 +1,251 @@
-// Package main is the entry point for Kore, an AI-powered workflow automation platform.
+// Package main 是 Kore 的入口点
 //
-// Kore serves as the core中枢 for all development tasks, featuring a hybrid CLI/TUI/GUI interface.
-// It provides intelligent code understanding, modification, and automation capabilities through
-// natural language interaction.
+// Kore 是一个 AI 驱动的自动化工作流平台，采用混合 CLI/TUI/GUI 界面。
+// 通过自然语言交互提供智能代码理解、修改和自动化能力。
 package main
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/yukin/kore/internal/adapters/cli"
+	openaiadapter "github.com/yukin/kore/internal/adapters/openai"
+	ollamaadapter "github.com/yukin/kore/internal/adapters/ollama"
+	"github.com/yukin/kore/internal/adapters/tui"
+	"github.com/yukin/kore/internal/core"
+	"github.com/yukin/kore/internal/infrastructure/config"
+	"github.com/yukin/kore/internal/tools"
+	"github.com/yukin/kore/pkg/logger"
+	"github.com/yukin/kore/pkg/utils"
 )
 
 // version is set by build flags during release
 var version = "dev"
 
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
+var (
+	cfgFile string
+	verbose bool
+	uiMode  string
+)
+
+// rootCmd represents the base command when called without any subcommands
+var rootCmd = &cobra.Command{
+	Use:   "kore",
+	Short: "AI-powered workflow automation platform",
+	Long: `Kore is an AI-powered workflow automation platform built with Go.
+
+Serving as the core中枢 for all development tasks, Kore features a hybrid CLI/TUI/GUI
+interface and provides intelligent code understanding, modification, and automation
+capabilities through natural language interaction.`,
+	Version: version,
+}
+
+// chatCmd starts an interactive chat session
+var chatCmd = &cobra.Command{
+	Use:   "chat [message]",
+	Short: "Start an interactive chat session",
+	Long:  "Start an interactive chat session with Kore. If a message is provided, it will be processed directly.",
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runChat,
+}
+
+// versionCmd prints version information
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number",
+	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Kore version %s\n", version)
-		os.Exit(0)
+	},
+}
+
+func init() {
+	cobra.OnInitialize(initConfig)
+
+	// Global flags
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/kore/config.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().StringVarP(&uiMode, "ui", "u", "cli", "UI mode: cli, tui, or gui")
+
+	// Add subcommands
+	rootCmd.AddCommand(chatCmd)
+	rootCmd.AddCommand(versionCmd)
+}
+
+func initConfig() {
+	if verbose {
+		logger.SetLevel(logger.DEBUG)
 	}
 
-	fmt.Println("Kore - AI-powered workflow automation platform")
-	fmt.Printf("Version: %s\n", version)
-	fmt.Println("\nKore is initializing... (Work in progress)")
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Warn("Failed to load config: %v. Using defaults.", err)
+		cfg = config.DefaultConfig()
+	}
 
-	// TODO: Initialize Cobra CLI framework
-	// TODO: Initialize Agent with configuration
-	// TODO: Start TUI or CLI based on arguments
+	logger.Info("Configuration loaded successfully")
+	logger.Debug("LLM Provider: %s, Model: %s", cfg.LLM.Provider, cfg.LLM.Model)
+}
+
+func runChat(cmd *cobra.Command, args []string) error {
+	message := ""
+	if len(args) > 0 {
+		message = strings.Join(args, " ")
+	}
+
+	// 加载配置
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("加载配置失败: %w", err)
+	}
+
+	// 确定 UI 模式
+	mode := uiMode
+	if mode == "" {
+		mode = cfg.UI.Mode
+	}
+
+	logger.Info("在 %s 模式下启动聊天会话", mode)
+
+	// 创建 UI 适配器
+	var uiAdapter core.UIInterface
+	var tuiAdapter *tui.Adapter // 保存 TUI 适配器引用（用于需要特殊处理的场景）
+
+	switch mode {
+	case "tui":
+		tuiAdapter = tui.NewAdapter()
+		uiAdapter = tuiAdapter
+
+		// 启动 TUI 程序
+		if err := tuiAdapter.Start(); err != nil {
+			return fmt.Errorf("启动 TUI 失败: %w", err)
+		}
+		defer tuiAdapter.Stop() // 确保程序退出时停止 TUI
+	case "cli":
+		uiAdapter = cli.NewAdapter()
+	default:
+		return fmt.Errorf("未知的 UI 模式: %s", mode)
+	}
+
+	// 获取项目根目录
+	projectRoot, err := utils.GetProjectRoot()
+	if err != nil {
+		return fmt.Errorf("无法找到项目根目录: %w", err)
+	}
+
+	// 创建 LLM Provider
+	var llmProvider core.LLMProvider
+	switch cfg.LLM.Provider {
+	case "openai":
+		llmProvider = openaiadapter.NewProvider(cfg.LLM.APIKey, cfg.LLM.Model)
+		if cfg.LLM.BaseURL != "" {
+			provider := llmProvider.(*openaiadapter.Provider)
+			provider.SetBaseURL(cfg.LLM.BaseURL)
+		}
+	case "ollama":
+		baseURL := cfg.LLM.BaseURL
+		if baseURL == "" {
+			baseURL = "http://localhost:11434" // Ollama 默认地址
+		}
+		llmProvider = ollamaadapter.NewProvider(baseURL, cfg.LLM.Model)
+	default:
+		return fmt.Errorf("不支持的 LLM 提供商: %s", cfg.LLM.Provider)
+	}
+
+	// 创建工具执行器
+	toolExecutor := tools.NewToolExecutor(projectRoot)
+
+	// 创建 Agent
+	agent := core.NewAgent(uiAdapter, llmProvider, toolExecutor, projectRoot)
+	agent.Config.LLM.Model = cfg.LLM.Model
+	agent.Config.LLM.Temperature = cfg.LLM.Temperature
+	agent.Config.LLM.MaxTokens = cfg.LLM.MaxTokens
+
+	// 启动会话
+	uiAdapter.ShowStatus("Kore 正在初始化...")
+
+	if message != "" {
+		// 单次消息模式
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		if err := agent.Run(ctx, message); err != nil {
+			return fmt.Errorf("Agent 运行失败: %w", err)
+		}
+	} else {
+		// 交互模式
+		if mode == "tui" {
+			// TUI 模式：从 TUI 通道读取用户输入
+			uiAdapter.SendStream("交互式聊天模式已启动 - 在输入框中输入消息 (Ctrl+C 退出)\n")
+
+			inputChan := tuiAdapter.GetInputChannel()
+			for {
+				select {
+				case input := <-inputChan:
+					// 处理用户输入
+					if input == "quit" || input == "exit" {
+						uiAdapter.SendStream("再见!\n")
+						return nil
+					}
+
+					if strings.TrimSpace(input) != "" {
+						uiAdapter.ShowStatus("处理中...")
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+						if err := agent.Run(ctx, input); err != nil {
+							uiAdapter.SendStream(fmt.Sprintf("\n错误: %v\n", err))
+						}
+						cancel()
+						uiAdapter.ShowStatus("准备就绪")
+					}
+				}
+			}
+		} else {
+			// CLI 模式：使用标准输入读取
+			uiAdapter.SendStream("\n交互式聊天模式 (输入 'quit' 或 'exit' 退出)\n\n")
+
+			scanner := bufio.NewScanner(os.Stdin)
+			for {
+				fmt.Print("> ")
+				if !scanner.Scan() {
+					break
+				}
+
+				input := scanner.Text()
+				if input == "quit" || input == "exit" {
+					uiAdapter.SendStream("再见!\n")
+					break
+				}
+
+				if strings.TrimSpace(input) == "" {
+					continue
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				if err := agent.Run(ctx, input); err != nil {
+					uiAdapter.SendStream(fmt.Sprintf("\n错误: %v\n", err))
+				}
+				cancel()
+
+				uiAdapter.SendStream("\n")
+			}
+
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("读取输入失败: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }

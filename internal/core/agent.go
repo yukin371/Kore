@@ -26,6 +26,12 @@ type UIInterface interface {
 
 	// ShowStatus updates the status display
 	ShowStatus(status string)
+
+	// StartThinking indicates AI is thinking
+	StartThinking()
+
+	// StopThinking indicates AI has finished thinking
+	StopThinking()
 }
 
 // ToolExecutor defines the interface for executing tools
@@ -94,20 +100,30 @@ func (a *Agent) Run(ctx context.Context, userMessage string) error {
 		default:
 		}
 
+		// 【状态通知】AI 开始思考
+		a.UI.StartThinking()
+
 		// Call LLM
 		req := a.History.BuildRequest(a.Config.LLM.MaxTokens, a.Config.LLM.Temperature)
 		stream, err := a.LLMProvider.ChatStream(ctx, req)
 		if err != nil {
+			a.UI.StopThinking()
 			return fmt.Errorf("LLM stream error: %w", err)
 		}
 
 		// Process stream
 		currentToolCalls := make([]*ToolCall, 0)
 		var contentBuilder strings.Builder
+		hasContent := false // 标记是否有内容生成
 
 		for event := range stream {
 			switch event.Type {
 			case EventContent:
+				// 【状态通知】开始生成内容
+				if !hasContent {
+					a.UI.StopThinking()
+					hasContent = true
+				}
 				a.UI.SendStream(event.Content)
 				contentBuilder.WriteString(event.Content)
 
@@ -116,6 +132,7 @@ func (a *Agent) Run(ctx context.Context, userMessage string) error {
 				updateToolCalls(&currentToolCalls, event)
 
 			case EventError:
+				a.UI.StopThinking()
 				a.UI.SendStream(fmt.Sprintf("\n[Error: %s]", event.Content))
 
 			case EventDone:
