@@ -1,0 +1,27 @@
+default:
+  supervisor: supervisor
+  planner: planner
+  reviewer: reviewer
+
+roles:
+  supervisor:
+    model: openai:gpt-4o
+    tools: [read_file, summarize, review, approve]
+  planner:
+    model: openai:gpt-4o
+    tools: [read_file, summarize, plan]
+  reviewer:
+    model: openai:gpt-4o
+    tools: [read_file, diff, review]
+  frontend:
+    model: gemini:1.5-pro
+    tools: [read_file, write_file, image_generate]
+  backend:
+    model: openai:gpt-4.1
+    tools: [read_file, write_file, run_command, lsp_request]
+  test:
+    model: openai:gpt-4o-mini
+    tools: [read_file, write_file, run_command]
+  docs:
+    model: openai:gpt-4o-mini
+    tools: [read_file, write_file]

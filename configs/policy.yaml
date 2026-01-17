@@ -1,0 +1,27 @@
+default:
+  deny_by_default: true
+  audit_level: summary
+
+roles:
+  writer:
+    tools:
+      read_file:
+        paths: ["docs/**", "README.md"]
+      web_fetch:
+        allow: true
+  designer:
+    tools:
+      read_file:
+        paths: ["assets/**", "docs/**"]
+      image_generate:
+        allow: true
+      asset_export:
+        allow: true
+  builder:
+    tools:
+      read_file:
+        paths: ["internal/**", "cmd/**", "api/**"]
+      write_file:
+        paths: ["internal/**", "cmd/**", "api/**"]
+      run_command:
+        commands: ["go", "rg", "git status"]
