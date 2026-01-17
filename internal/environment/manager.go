@@ -59,11 +59,11 @@ type WriteOptions struct {
 
 // DiffResult 文件差异结果
 type DiffResult struct {
-	Path1    string   // 第一个文件路径
-	Path2    string   // 第二个文件路径
-	Unified  string   // 统一格式差异
-	Hunks    []Hunk   // 差异块
-	HasDiff  bool     // 是否有差异
+	Path1    string    // 第一个文件路径
+	Path2    string    // 第二个文件路径
+	Unified  string    // 统一格式差异
+	Hunks    []Hunks   // 差异块
+	HasDiff  bool      // 是否有差异
 }
 
 // Hunks 表示一个差异块

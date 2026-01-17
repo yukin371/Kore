@@ -9,9 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/sourcegraph/go-diff/diff"
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // LocalEnvironment 本地环境实现
@@ -240,13 +239,14 @@ func (env *LocalEnvironment) Diff(ctx context.Context, path1, path2 string) (*Di
 	}
 
 	// 使用 go-diff 生成差异
-	diffs := diff.Do(string(content1), string(content2))
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(string(content1), string(content2), false)
 
 	// 构建结果
 	result := &DiffResult{
 		Path1:   path1,
 		Path2:   path2,
-		HasDiff: len(diffs) > 0 && !(len(diffs) == 1 && diffs[0].Type == 0), // 0 = Equal
+		HasDiff: len(diffs) > 0 && !(len(diffs) == 1 && diffs[0].Type == diffmatchpatch.DiffEqual),
 	}
 
 	// 生成统一格式差异
@@ -254,11 +254,11 @@ func (env *LocalEnvironment) Diff(ctx context.Context, path1, path2 string) (*Di
 	unified.WriteString(fmt.Sprintf("--- %s\n", path1))
 	unified.WriteString(fmt.Sprintf("+++ %s\n", path2))
 
-	hunks := make([]Hunk, 0)
+	hunks := make([]Hunks, 0)
 	lineNum := 1
 
 	for _, d := range diffs {
-		if d.Type == 0 { // Equal
+		if d.Type == diffmatchpatch.DiffEqual { // Equal
 			lines := strings.Split(d.Text, "\n")
 			for _, line := range lines {
 				if line != "" {
@@ -266,7 +266,7 @@ func (env *LocalEnvironment) Diff(ctx context.Context, path1, path2 string) (*Di
 					lineNum++
 				}
 			}
-		} else if d.Type == 1 { // Deleted
+		} else if d.Type == diffmatchpatch.DiffDelete { // Deleted
 			lines := strings.Split(d.Text, "\n")
 			hunk := Hunks{
 				OldStart: lineNum,
@@ -282,7 +282,7 @@ func (env *LocalEnvironment) Diff(ctx context.Context, path1, path2 string) (*Di
 				}
 			}
 			hunks = append(hunks, hunk)
-		} else if d.Type == 2 { // Inserted
+		} else if d.Type == diffmatchpatch.DiffInsert { // Inserted
 			lines := strings.Split(d.Text, "\n")
 			hunk := Hunks{
 				OldStart: lineNum,
