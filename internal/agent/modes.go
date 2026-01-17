@@ -194,3 +194,94 @@ func (a *BaseAgent) IsValid() bool {
 func (a *BaseAgent) Run(ctx context.Context, prompt string) error {
 	return a.coreAgent.Run(ctx, prompt)
 }
+
+// CreateAgent 根据 Agent 模式创建对应的 Agent 实例
+//
+// 参数:
+//   - mode: Agent 模式 (ModeBuild, ModePlan, ModeGeneral)
+//   - coreAgent: 核心 Agent 实例
+//   - projectRoot: 项目根目录
+//
+// 返回:
+//   - Agent: Agent 实例
+//   - error: 错误信息
+//
+// 示例:
+//   agent, err := CreateAgent(types.ModeBuild, coreAgent, "/path/to/project")
+//   if err != nil {
+//       log.Fatal(err)
+//   }
+func CreateAgent(mode types.AgentMode, coreAgent *core.Agent, projectRoot string) (Agent, error) {
+	switch mode {
+	case types.ModeUltraWork:
+		// Build Agent - 构建模式，完全访问权限
+		return NewBuildAgent(coreAgent, projectRoot)
+
+	case types.ModeSearch:
+		// Plan Agent - 规划模式，只读访问权限
+		return NewPlanAgent(coreAgent, projectRoot)
+
+	case types.ModeAnalyze:
+		// General Agent - 通用模式，复杂任务编排
+		return NewGeneralAgent(coreAgent, projectRoot)
+
+	default:
+		// 默认使用 Normal 模式（等同于 Build Agent，但配置更保守）
+		config := DefaultAgentModeConfig(types.ModeNormal)
+		baseAgent, err := NewBaseAgent(types.ModeNormal, config, coreAgent)
+		if err != nil {
+			return nil, err
+		}
+		return &BuildAgent{
+			BaseAgent: baseAgent,
+		}, nil
+	}
+}
+
+// CreateAgentWithConfig 使用自定义配置创建 Agent
+//
+// 参数:
+//   - mode: Agent 模式
+//   - coreAgent: 核心 Agent 实例
+//   - config: 自定义配置
+//   - projectRoot: 项目根目录
+//
+// 返回:
+//   - Agent: Agent 实例
+//   - error: 错误信息
+func CreateAgentWithConfig(mode types.AgentMode, coreAgent *core.Agent, config *AgentModeConfig, projectRoot string) (Agent, error) {
+	switch mode {
+	case types.ModeUltraWork:
+		return NewBuildAgentWithConfig(coreAgent, config)
+
+	case types.ModeSearch:
+		return NewPlanAgentWithConfig(coreAgent, config)
+
+	case types.ModeAnalyze:
+		return NewGeneralAgentWithConfig(coreAgent, config, projectRoot)
+
+	default:
+		return NewBuildAgentWithConfig(coreAgent, config)
+	}
+}
+
+// AgentCapabilities 定义 Agent 能力接口
+type AgentCapabilities interface {
+	// CanWrite 是否允许写入文件
+	CanWrite() bool
+
+	// CanExecuteCommand 是否允许执行命令
+	CanExecuteCommand() bool
+
+	// CanInvokeAgents 是否允许调用其他 Agent
+	CanInvokeAgents() bool
+
+	// GetCapabilities 获取能力描述
+	GetCapabilities() string
+
+	// ValidateToolCall 验证工具调用权限
+	ValidateToolCall(toolName string) error
+
+	// GetSummary 获取 Agent 摘要
+	GetSummary() map[string]interface{}
+}
