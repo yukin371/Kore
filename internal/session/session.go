@@ -65,7 +65,7 @@ type Session struct {
 // NewSession 创建新会话
 func NewSession(id string, name string, agentMode AgentMode, agent *core.Agent) *Session {
 	now := time.Now().Unix()
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 
 	return &Session{
 		ID:        id,

@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"time"
 
