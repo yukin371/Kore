@@ -379,8 +379,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rendered, err := m.renderMarkdown(string(msg))
 		if err != nil {
 			// 如果渲染失败，直接显示原始内容
-			m.messages = append(m.messages, string(msg))
+			content := string(msg)
+			// 【修复】清理首尾空行
+			content = strings.TrimLeft(content, "\n")
+			content = strings.TrimRight(content, "\n")
+			m.messages = append(m.messages, content)
 		} else {
+			// 【修复】清理渲染后的首尾空行
+			rendered = strings.TrimLeft(rendered, "\n")
+			rendered = strings.TrimRight(rendered, "\n")
 			m.messages = append(m.messages, rendered)
 		}
 		m.scrollToBottom()
@@ -447,6 +454,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// 定时刷新：如果有流式内容，刷新到消息列表
 		if m.currentStream.Len() > 0 {
 			content := m.currentStream.String()
+
+			// 【修复】清理流式内容的首尾空行
+			// 保留中间的换行，但移除首尾的多余空行
+			content = strings.TrimLeft(content, "\n")
+			content = strings.TrimRight(content, "\n")
+
 			m.messages = append(m.messages, content)
 			m.currentStream.Reset()
 			// 自动滚动到底部
@@ -763,16 +776,28 @@ func (m *Model) getVisibleMessages(maxHeight int) []string {
 
 // renderMessagesContent 渲染所有消息为单个字符串（供 viewport 使用）
 func (m *Model) renderMessagesContent() string {
-	var b strings.Builder
-
-	for _, msg := range m.messages {
-		b.WriteString(m.styles.Message.Render(msg))
-		b.WriteString("\n")
+	if len(m.messages) == 0 {
+		// 如果没有消息，显示提示
+		return m.styles.Message.Render("\n\n等待输入...\n")
 	}
 
-	// 如果没有消息，显示提示
-	if len(m.messages) == 0 {
-		b.WriteString(m.styles.Message.Render("\n\n等待输入...\n"))
+	var b strings.Builder
+
+	for i, msg := range m.messages {
+		// 渲染消息
+		rendered := m.styles.Message.Render(msg)
+
+		// 【修复】清理消息开头和结尾的多余换行
+		// 保留内容的换行，但移除首尾的空行
+		rendered = strings.TrimLeft(rendered, "\n")
+		rendered = strings.TrimRight(rendered, "\n")
+
+		b.WriteString(rendered)
+
+		// 【修复】消息之间用单个空行分隔（除了最后一个消息）
+		if i < len(m.messages)-1 {
+			b.WriteString("\n\n")
+		}
 	}
 
 	return b.String()
