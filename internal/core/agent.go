@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // UIInterface defines the abstract interface for user interaction
@@ -40,6 +41,9 @@ type Agent struct {
 	Tools       ToolExecutor
 	History     *ConversationHistory
 	Config      *Config
+	// 【新增】工具调用历史和文件缓存
+	toolHistory *ToolCallHistory
+	fileCache   *FileCache
 }
 
 // Config holds agent configuration
@@ -61,6 +65,9 @@ func NewAgent(ui UIInterface, llm LLMProvider, tools ToolExecutor, projectRoot s
 		Tools:       tools,
 		History:     NewConversationHistory(),
 		Config:      &Config{},
+		// 【新增】初始化工具调用历史和文件缓存
+		toolHistory: NewToolCallHistory(),
+		fileCache:   NewFileCache(),
 	}
 }
 
@@ -165,9 +172,60 @@ func (a *Agent) executeToolsSequential(ctx context.Context, toolCalls []*ToolCal
 		// 【新增】发送工具执行开始状态
 		a.notifyToolExecutionStart(call.Name, call.Arguments)
 
+		// 【新增】检查智能文件缓存（仅对 read_file）
+		if call.Name == "read_file" {
+			var args map[string]interface{}
+			json.Unmarshal([]byte(call.Arguments), &args)
+			if path, ok := args["path"].(string); ok {
+				content, cached, _ := a.fileCache.CheckRead(path)
+				if cached {
+					// 文件未修改，使用缓存
+					result := map[string]interface{}{
+						"content": content,
+						"cached": true,
+						"message": "文件内容未改变，使用缓存",
+					}
+					resultJSON, _ := json.Marshal(result)
+					a.History.AddToolOutput(call.ID, string(resultJSON))
+
+					// 记录工具调用（使用缓存）
+					a.toolHistory.Record(ToolCallRecord{
+						ID:        call.ID,
+						Tool:      call.Name,
+						Arguments: call.Arguments,
+						Result:    "(使用缓存)",
+						Success:   true,
+						Timestamp: time.Now(),
+					})
+
+					a.notifyToolExecutionEnd(nil)
+					continue
+				}
+			}
+		}
+
 		// Execute tool
 		a.UI.ShowStatus(fmt.Sprintf("Running %s...", call.Name))
 		result, err := a.Tools.Execute(ctx, *call)
+
+		// 【新增】记录工具调用历史
+		a.toolHistory.Record(ToolCallRecord{
+			ID:        call.ID,
+			Tool:      call.Name,
+			Arguments: call.Arguments,
+			Result:    result,
+			Success:   err == nil,
+			Timestamp: time.Now(),
+		})
+
+		// 【新增】如果是写入操作，使缓存失效
+		if call.Name == "write_file" && err == nil {
+			var args map[string]interface{}
+			json.Unmarshal([]byte(call.Arguments), &args)
+			if path, ok := args["path"].(string); ok {
+				a.fileCache.Invalidate(path)
+			}
+		}
 
 		// 【新增】发送工具执行结果状态
 		a.notifyToolExecutionEnd(err)
@@ -279,13 +337,26 @@ func (a *Agent) executeToolsParallel(ctx context.Context, toolCalls []*ToolCall)
 
 // buildSystemPrompt constructs the system prompt with project context
 func (a *Agent) buildSystemPrompt(ctx *ProjectContext) string {
-	// 【修复】加载系统提示词
-	systemPrompt := loadSystemPrompt()
+	var parts []string
 
-	// 添加项目上下文
+	// 1. 基础系统提示词（从 system.txt 加载）
+	systemPrompt := loadSystemPrompt()
+	parts = append(parts, systemPrompt)
+
+	// 2. 工具使用指南（从 tools.txt 加载）
+	toolGuide := loadToolGuide()
+	parts = append(parts, toolGuide)
+
+	// 3. 【新增】工具调用历史摘要
+	toolHistorySummary := a.toolHistory.GetSummary()
+	parts = append(parts, toolHistorySummary)
+
+	// 4. 项目上下文
 	projectContext := fmt.Sprintf(`
 
 ## 项目上下文 (Project Context)
+
+项目根目录: %s
 
 项目目录树:
 %s
@@ -294,14 +365,19 @@ func (a *Agent) buildSystemPrompt(ctx *ProjectContext) string {
 %s
 
 当前工作目录: %s`,
+		a.ContextMgr.GetProjectRoot(),
 		ctx.FileTree,
 		len(ctx.FocusedFiles),
 		ctx.TotalTokens,
 		formatFocusedFiles(ctx.FocusedFiles),
 		a.ContextMgr.GetProjectRoot(),
 	)
+	parts = append(parts, projectContext)
 
-	return systemPrompt + projectContext
+	// 5. 当前日期时间
+	parts = append(parts, fmt.Sprintf("\n当前时间: %s", time.Now().Format("2006-01-02 15:04")))
+
+	return strings.Join(parts, "\n\n")
 }
 
 // loadSystemPrompt 加载系统提示词文件
@@ -321,6 +397,24 @@ func loadSystemPrompt() string {
 - 自动化重复的开发任务
 
 你可以使用工具来读取文件、写入文件和执行命令。`
+	}
+
+	return string(content)
+}
+
+// loadToolGuide 加载工具使用指南
+func loadToolGuide() string {
+	content, err := os.ReadFile("api/prompts/tools.txt")
+	if err != nil {
+		// 如果读取失败，返回基本指南
+		return `## 工具使用指南
+
+使用工具来完成实际任务。你可以并行调用多个工具以提高效率。
+
+重要：
+- 不要重复读取已经读取过的文件
+- 工具调用结果会保存到对话历史中
+- 一次性说明所有修改，而不是多次小修改`
 	}
 
 	return string(content)
