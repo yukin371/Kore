@@ -58,7 +58,8 @@ func (a *Adapter) Start() error {
 	}
 
 	// 创建 Bubble Tea 程序
-	a.program = tea.NewProgram(a.model, tea.WithAltScreen()) // 使用备用屏幕模式
+	// 【修复】不使用 WithAltScreen()，允许用户选择和复制文本
+	a.program = tea.NewProgram(a.model)
 
 	// 异步启动程序（不阻塞）
 	go func() {

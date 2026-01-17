@@ -2,8 +2,10 @@ package core
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 )
@@ -277,19 +279,51 @@ func (a *Agent) executeToolsParallel(ctx context.Context, toolCalls []*ToolCall)
 
 // buildSystemPrompt constructs the system prompt with project context
 func (a *Agent) buildSystemPrompt(ctx *ProjectContext) string {
-	return fmt.Sprintf(`Project Context:
+	// 【修复】加载系统提示词
+	systemPrompt := loadSystemPrompt()
+
+	// 添加项目上下文
+	projectContext := fmt.Sprintf(`
+
+## 项目上下文 (Project Context)
+
+项目目录树:
 %s
 
-Focused Files (%d files, ~%d tokens):
+关注的文件 (%d 个文件, ~%d tokens):
 %s
 
-Current working directory: %s`,
+当前工作目录: %s`,
 		ctx.FileTree,
 		len(ctx.FocusedFiles),
 		ctx.TotalTokens,
 		formatFocusedFiles(ctx.FocusedFiles),
 		a.ContextMgr.GetProjectRoot(),
 	)
+
+	return systemPrompt + projectContext
+}
+
+// loadSystemPrompt 加载系统提示词文件
+func loadSystemPrompt() string {
+	// 尝试从嵌入的文件读取
+	// 如果使用 embed，需要在文件顶部添加 //go:embed 指令
+	// 这里我们先尝试从文件系统读取
+	content, err := os.ReadFile("api/prompts/system.txt")
+	if err != nil {
+		// 如果读取失败，返回默认提示词
+		return `你是 Kore，一个用 Go 构建的专业编程助手和自动化工作流代理。
+
+你的任务是帮助开发者：
+- 理解代码库并解释代码逻辑
+- 精确地修改代码
+- 运行命令和测试
+- 自动化重复的开发任务
+
+你可以使用工具来读取文件、写入文件和执行命令。`
+	}
+
+	return string(content)
 }
 
 // formatFocusedFiles formats focused files for display
