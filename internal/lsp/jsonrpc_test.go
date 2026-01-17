@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
 	"os"
@@ -85,7 +86,7 @@ func TestReadContentLength(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reader := bytes.NewBufferString(tt.input)
+			reader := bufio.NewReader(bytes.NewBufferString(tt.input))
 			length, err := readContentLength(reader)
 
 			if tt.expectError {
@@ -161,7 +162,7 @@ func TestMessageParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewJSONRPC2(nil, nil, log)
+			_ = NewJSONRPC2(nil, nil, log)
 
 			// Simulate reading message
 			var raw json.RawMessage = json.RawMessage(tt.input)
