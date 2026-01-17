@@ -1,3 +1,4 @@
+# Default role-model mapping for multi-agent orchestration.
 default:
   supervisor: supervisor
   planner: planner
