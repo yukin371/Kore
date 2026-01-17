@@ -370,8 +370,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case StreamMsg:
-		// 流式内容追加
-		m.currentStream.WriteString(string(msg))
+		// 【优化】流式内容立即显示（实现逐行显示）
+		content := string(msg)
+
+		// 如果内容包含换行符，立即刷新到显示
+		if strings.Contains(content, "\n") {
+			m.currentStream.WriteString(content)
+			// 立即刷新所有内容
+			streamContent := m.currentStream.String()
+			streamContent = strings.TrimLeft(streamContent, "\n")
+			streamContent = strings.TrimRight(streamContent, "\n")
+			if streamContent != "" {
+				m.messages = append(m.messages, streamContent)
+				m.currentStream.Reset()
+				m.scrollToBottom()
+			}
+		} else {
+			// 没有换行符，追加到缓冲区
+			m.currentStream.WriteString(content)
+		}
 		return m, nil
 
 	case MarkdownMsg:

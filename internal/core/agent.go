@@ -218,12 +218,16 @@ func (a *Agent) executeToolsSequential(ctx context.Context, toolCalls []*ToolCal
 			Timestamp: time.Now(),
 		})
 
-		// 【新增】如果是写入操作，使缓存失效
+		// 【新增】如果是写入操作，更新缓存而非删除
 		if call.Name == "write_file" && err == nil {
 			var args map[string]interface{}
-			json.Unmarshal([]byte(call.Arguments), &args)
-			if path, ok := args["path"].(string); ok {
-				a.fileCache.Invalidate(path)
+			if err := json.Unmarshal([]byte(call.Arguments), &args); err == nil {
+				if path, ok := args["path"].(string); ok {
+					if content, ok := args["content"].(string); ok {
+						// 更新缓存，这样下次 read_file 可以直接使用
+						a.fileCache.UpdateAfterWrite(path, content)
+					}
+				}
 			}
 		}
 
@@ -289,18 +293,68 @@ func (a *Agent) executeToolsParallel(ctx context.Context, toolCalls []*ToolCall)
 			// 【新增】发送工具执行开始状态
 			a.notifyToolExecutionStart(toolCall.Name, toolCall.Arguments)
 
-			// Execute tool
-			a.UI.ShowStatus(fmt.Sprintf("Running %s...", toolCall.Name))
-			result, err := a.Tools.Execute(ctx, *toolCall)
+			// 【新增】检查智能文件缓存（仅对 read_file）
+			var result string
+			var execErr error
+			if toolCall.Name == "read_file" {
+				var args map[string]interface{}
+				json.Unmarshal([]byte(toolCall.Arguments), &args)
+				if path, ok := args["path"].(string); ok {
+					content, cached, _ := a.fileCache.CheckRead(path)
+					if cached {
+						// 文件未修改，使用缓存
+						cachedResult := map[string]interface{}{
+							"content": content,
+							"cached": true,
+							"message": "文件内容未改变，使用缓存",
+						}
+						resultJSON, _ := json.Marshal(cachedResult)
+						result = string(resultJSON)
+						execErr = nil
+					} else {
+						// 执行实际工具
+						result, execErr = a.Tools.Execute(ctx, *toolCall)
+					}
+				} else {
+					result, execErr = a.Tools.Execute(ctx, *toolCall)
+				}
+			} else {
+				// Execute tool
+				a.UI.ShowStatus(fmt.Sprintf("Running %s...", toolCall.Name))
+				result, execErr = a.Tools.Execute(ctx, *toolCall)
+			}
 
 			// 【新增】发送工具执行结果状态
-			a.notifyToolExecutionEnd(err)
+			a.notifyToolExecutionEnd(execErr)
+
+			// 【新增】记录工具调用历史
+			a.toolHistory.Record(ToolCallRecord{
+				ID:        toolCall.ID,
+				Tool:      toolCall.Name,
+				Arguments: toolCall.Arguments,
+				Result:    result,
+				Success:   execErr == nil,
+				Timestamp: time.Now(),
+			})
+
+			// 【新增】如果是写入操作，更新缓存而非删除
+			if toolCall.Name == "write_file" && execErr == nil {
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(toolCall.Arguments), &args); err == nil {
+					if path, ok := args["path"].(string); ok {
+						if content, ok := args["content"].(string); ok {
+							// 更新缓存，这样下次 read_file 可以直接使用
+							a.fileCache.UpdateAfterWrite(path, content)
+						}
+					}
+				}
+			}
 
 			// Format output as JSON
 			var output string
-			if err != nil {
+			if execErr != nil {
 				errorResult := map[string]interface{}{
-					"error": err.Error(),
+					"error": execErr.Error(),
 				}
 				errorJSON, _ := json.Marshal(errorResult)
 				output = string(errorJSON)

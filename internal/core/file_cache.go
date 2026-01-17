@@ -105,6 +105,33 @@ func (c *FileCache) GetHash(path string) (string, bool) {
 	return hash, ok
 }
 
+// UpdateAfterWrite 在写入操作后更新缓存
+// 这样下次读取同一文件时可以直接使用缓存，避免重复读取
+func (c *FileCache) UpdateAfterWrite(path string, content string) {
+	// 计算 MD5 hash
+	hash := md5.Sum([]byte(content))
+	hashStr := hex.EncodeToString(hash[:])
+
+	// 获取当前文件信息（用于更新 modTime）
+	info, err := os.Stat(path)
+	if err != nil {
+		// 文件不存在或无法访问，使用当前时间
+		c.mu.Lock()
+		c.hashes[path] = hashStr
+		c.modTimes[path] = time.Now()
+		c.contents[path] = content
+		c.mu.Unlock()
+		return
+	}
+
+	// 更新缓存
+	c.mu.Lock()
+	c.hashes[path] = hashStr
+	c.modTimes[path] = info.ModTime()
+	c.contents[path] = content
+	c.mu.Unlock()
+}
+
 // Clear 清空所有缓存
 func (c *FileCache) Clear() {
 	c.mu.Lock()
