@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -126,6 +127,9 @@ type Model struct {
 
 	// 【新增】动画状态管理器（将逐步替换 thinking bool）
 	animatedStatus AnimatedStatus
+
+	// 【新增】Viewport 用于消息区域滚动和换行
+	viewport viewport.Model
 
 	// 用户输入框
 	textInput     textinput.Model
@@ -302,6 +306,12 @@ func NewModel() *Model {
 		spinner:     sp,
 	}
 
+	// 【新增】初始化 viewport
+	vp := viewport.New(0, 0)
+	vp.Style = lipgloss.NewStyle().
+		Padding(0, 1).
+		Border(lipgloss.HiddenBorder())
+
 	return &Model{
 		messages:          make([]string, 0),
 		status:            "准备就绪",
@@ -313,6 +323,7 @@ func NewModel() *Model {
 		diffConfirmChoice: 0,
 		styles:            DefaultStyles(),
 		animatedStatus:    animStatus, // 【新增】
+		viewport:          vp,          // 【新增】
 	}
 }
 
@@ -338,10 +349,19 @@ func (m *Model) Init() tea.Cmd {
 
 // Update 实现 tea.Model 接口 - 处理消息更新
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// 键盘输入
-		return m.handleKeyMsg(msg)
+		// 【新增】让 viewport 处理滚动（Ctrl+↑/↓）
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+
+		// 处理其他按键
+		model, cmd := m.handleKeyMsg(msg)
+		cmds = append(cmds, cmd)
+		return model, tea.Batch(cmds...)
 
 	case tea.WindowSizeMsg:
 		// 窗口尺寸变化
@@ -464,42 +484,35 @@ func (m *Model) View() string {
 		return m.viewDiffConfirmDialog()
 	}
 
-	// 正常模式：显示消息列表 + 输入框 + 状态栏
-	var b strings.Builder
+	// 【重写】正常模式：使用动态高度计算
+	// 1. 先渲染底部组件（高度不固定）
+	inputView := m.renderInputArea()
+	statusBarView := m.renderAnimatedStatusBar()
+	helpView := m.styles.App.Render(m.renderHelpText())
 
-	// 消息区域
-	msgHeight := m.height - 5 // 留出输入框、状态栏和帮助提示的空间
-	messages := m.getVisibleMessages(msgHeight)
+	// 2. 计算底部总高度（使用 lipgloss.Height）
+	bottomHeight := lipgloss.Height(inputView) +
+		lipgloss.Height(statusBarView) +
+		lipgloss.Height(helpView)
 
-	for _, msg := range messages {
-		b.WriteString(msg)
+	// 3. 动态调整 viewport 高度（剩余空间）
+	availableHeight := m.height - bottomHeight
+	if availableHeight < 5 { // 最小高度保护
+		availableHeight = 5
 	}
+	m.viewport.Height = availableHeight
+	m.viewport.Width = m.width
 
-	// 输入框区域
-	b.WriteString("\n")
-	if m.inputActive {
-		b.WriteString(m.styles.Message.Render(">> " + m.textInput.View()))
-	} else {
-		b.WriteString(m.styles.Message.Render(">> (按 ESC 激活输入)"))
-	}
+	// 4. 更新 viewport 内容
+	m.viewport.SetContent(m.renderMessagesContent())
 
-	// 状态栏
-	b.WriteString("\n")
-	statusText := m.status
-	if m.thinking {
-		// 思考状态：添加 spinner
-		statusText = fmt.Sprintf("%s %s", m.thinkingSpinner.View(), m.status)
-	}
-	statusBar := m.styles.StatusBar.
-		Width(m.width).
-		Render(statusText)
-	b.WriteString(statusBar)
-
-	// 帮助提示
-	help := " [Ctrl+↑/↓:滚动] [ESC:切换输入] [Enter:发送] [Ctrl+C:退出] "
-	b.WriteString(m.styles.App.Render(help))
-
-	return b.String()
+	// 5. 使用 lipgloss.JoinVertical 组装（稳健布局）
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.viewport.View(),
+		inputView,
+		statusBarView,
+		helpView,
+	)
 }
 
 // ========== 消息处理方法 ==========
@@ -744,6 +757,146 @@ func (m *Model) getVisibleMessages(maxHeight int) []string {
 	}
 
 	return result
+}
+
+// ========== 渲染辅助方法 ==========
+
+// renderMessagesContent 渲染所有消息为单个字符串（供 viewport 使用）
+func (m *Model) renderMessagesContent() string {
+	var b strings.Builder
+
+	for _, msg := range m.messages {
+		b.WriteString(m.styles.Message.Render(msg))
+		b.WriteString("\n")
+	}
+
+	// 如果没有消息，显示提示
+	if len(m.messages) == 0 {
+		b.WriteString(m.styles.Message.Render("\n\n等待输入...\n"))
+	}
+
+	return b.String()
+}
+
+// renderInputArea 渲染输入区域
+func (m *Model) renderInputArea() string {
+	var input string
+	if m.inputActive {
+		input = ">> " + m.textInput.View()
+	} else {
+		input = ">> (按 ESC 激活输入)"
+	}
+	return m.styles.Message.Render(input)
+}
+
+// renderAnimatedStatusBar 渲染动画状态栏
+func (m *Model) renderAnimatedStatusBar() string {
+	status := m.animatedStatus
+	var statusText strings.Builder
+
+	// 根据状态决定渲染内容
+	switch status.state {
+	case StatusIdle:
+		// 空闲状态：灰色文字 + 无动画
+		statusText.WriteString("○ 准备就绪")
+
+	case StatusThinking, StatusReading, StatusSearching,
+		StatusExecuting, StatusStreaming:
+		// 执行状态：颜色 spinner + 进度信息
+		spinnerView := status.spinner.View()
+
+		if status.progress > 0 {
+			// 显示进度条
+			statusText.WriteString(fmt.Sprintf("%s %s [%d%%]",
+				spinnerView, status.message, status.progress))
+		} else {
+			// 无进度，仅显示 spinner 和消息
+			statusText.WriteString(fmt.Sprintf("%s %s",
+				spinnerView, status.message))
+		}
+
+		// 【详情显示】如果启用了详情显示
+		if status.showDetails {
+			details := m.getOperationDetails()
+			if details != "" {
+				statusText.WriteString("\n  └─ " + details)
+			}
+		}
+
+	case StatusSuccess:
+		// 成功状态：绿色 ✓ + 消息
+		statusText.WriteString(fmt.Sprintf("✓ %s", status.message))
+
+	case StatusError:
+		// 错误状态：红色 ✗ + 错误信息
+		statusText.WriteString(fmt.Sprintf("✗ %s", status.message))
+	}
+
+	// 应用颜色和样式
+	coloredText := m.styles.App.
+		Foreground(colorForState(status.state)).
+		Render(statusText.String())
+
+	return m.styles.StatusBar.
+		Width(m.width).
+		Render(coloredText)
+}
+
+// renderHelpText 渲染帮助文本
+func (m *Model) renderHelpText() string {
+	var parts []string
+
+	parts = append(parts, "[Ctrl+↑/↓:滚动]")
+	parts = append(parts, "[ESC:输入]")
+
+	// 【新增】详情切换提示
+	if m.animatedStatus.showDetails {
+		parts = append(parts, "[Ctrl+D:隐藏详情]")
+	} else {
+		parts = append(parts, "[Ctrl+D/Tab:显示详情]")
+	}
+
+	parts = append(parts, "[Enter:发送]")
+	parts = append(parts, "[Ctrl+C:退出]")
+
+	return " " + strings.Join(parts, " ") + " "
+}
+
+// getOperationDetails 获取当前操作的详细信息
+func (m *Model) getOperationDetails() string {
+	p := m.animatedStatus.payload
+	if p == nil {
+		return ""
+	}
+
+	switch m.animatedStatus.state {
+	case StatusReading:
+		if file, ok := p["file"]; ok {
+			return fmt.Sprintf("文件: %s", file)
+		}
+		return "读取中..."
+
+	case StatusSearching:
+		if pattern, ok := p["pattern"]; ok {
+			return fmt.Sprintf("搜索: %s", pattern)
+		}
+		return "搜索中..."
+
+	case StatusExecuting:
+		if tool, ok := p["tool"]; ok {
+			return fmt.Sprintf("工具: %s", tool)
+		}
+		return "执行中..."
+
+	case StatusStreaming:
+		if tokens, ok := p["tokens"]; ok {
+			return fmt.Sprintf("已生成: %s tokens", tokens)
+		}
+		return "生成中..."
+
+	default:
+		return ""
+	}
 }
 
 // ========== 滚动控制方法 ==========
