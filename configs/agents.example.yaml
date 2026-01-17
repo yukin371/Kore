@@ -1,0 +1,221 @@
+# Kore Agent 配置示例
+# 此文件展示如何配置不同的 Agent 模式和行为
+
+# Agent 全局配置
+agent:
+  # 默认模式
+  default_mode: "standard"  # standard, plan, build
+
+  # 循环配置
+  loop:
+    enabled: false  # 是否启用 Ralph Loop（持续执行直到完成）
+    max_iterations: 10  # 最大循环次数
+    completion_marker: "DONE"  # 完成标记
+
+  # 上下文管理
+  context:
+    max_tokens: 16000  # 最大 token 数
+    warning_threshold: 0.7  # 警告阈值（70%）
+    compression_threshold: 0.85  # 压缩阈值（85%）
+    max_tree_depth: 5  # 目录树最大深度
+    max_files_per_dir: 50  # 每个目录最大文件数
+
+# 模式特定配置
+modes:
+  # 标准模式
+  standard:
+    name: "Standard Agent"
+    description: "通用问题解决助手"
+    system_prompt: |
+      You are a helpful coding assistant.
+      You can read files, search code, and execute commands.
+      Always think step by step and explain your reasoning.
+
+    tools:
+      - read_file
+      - search_files
+      - list_files
+      - run_command
+
+    parallel_tools: true  # 允许并行执行工具
+
+  # 计划模式
+  plan:
+    name: "Plan Agent"
+    description: "任务规划和分解专家"
+    system_prompt: |
+      You are a planning expert.
+      Break down complex tasks into clear, actionable steps.
+      Identify dependencies and potential risks.
+
+    tools:
+      - read_file
+      - search_files
+      - list_files
+
+    parallel_tools: false  # 顺序执行工具
+
+    output_format: "markdown"  # markdown, json, yaml
+
+  # 构建模式
+  build:
+    name: "Build Agent"
+    description: "代码实现和构建专家"
+    system_prompt: |
+      You are a code implementation expert.
+      Write clean, maintainable, and well-tested code.
+      Follow best practices and design patterns.
+
+    tools:
+      - read_file
+      - write_file
+      - search_files
+      - run_command
+      - diff
+
+    parallel_tools: true
+
+    # 代码生成选项
+    code_generation:
+      include_comments: true
+      follow_style_guide: true
+      add_tests: true
+
+# 工具配置
+tools:
+  # 文件读取
+  read_file:
+    max_size: 1048576  # 1MB
+    encoding: "utf-8"
+
+  # 文件写入
+  write_file:
+    backup: true  # 写入前备份
+    create_dirs: true  # 自动创建目录
+    confirm_overwrite: true  # 覆盖前确认
+
+  # 命令执行
+  run_command:
+    timeout: 30s  # 默认超时
+    stream_output: true  # 流式输出
+    allow_dangerous: false  # 不允许危险命令
+
+  # 文件搜索
+  search_files:
+    max_results: 100
+    context_lines: 2  # 上下文行数
+
+# 安全配置
+security:
+  # 安全级别
+  level: "standard"  # strict, standard, permissive
+
+  # 危险命令黑名单
+  blocked_commands:
+    - "rm -rf"
+    - "sudo"
+    - "shutdown"
+    - "reboot"
+    - "mkfs"
+    - "dd if="
+
+  # 受保护路径
+  protected_paths:
+    - ".git"
+    - ".env"
+    - "node_modules/.cache"
+    - "*.bak"
+
+  # 允许的目录
+  allowed_dirs:
+    - "."  # 当前工作目录
+    - "/tmp"
+
+  # 命令白名单（strict 模式）
+  allowed_commands:
+    - "ls"
+    - "cat"
+    - "grep"
+    - "find"
+    - "go"
+    - "git"
+    - "npm"
+    - "python"
+    - "node"
+
+# LLM 配置
+llm:
+  # 提供商
+  provider: "openai"  # openai, ollama
+
+  # 模型配置
+  model: "gpt-4"
+  temperature: 0.7
+  max_tokens: 4096
+
+  # API 配置
+  api_key: "${OPENAI_API_KEY}"  # 从环境变量读取
+  base_url: "https://api.openai.com/v1"
+
+  # 流式输出
+  stream: true
+
+# 会话配置
+session:
+  # 持久化
+  persist: true
+  storage_path: "~/.local/share/kore/sessions"
+
+  # 历史记录
+  max_history: 1000  # 最大消息数
+  compress_after: 500  # 500 条消息后压缩
+
+  # 加密
+  encrypt: false
+  encryption_key: "${KORE_ENCRYPTION_KEY}"
+
+# UI 配置
+ui:
+  # 模式
+  mode: "tui"  # cli, tui
+
+  # TUI 配置
+  tui:
+    # 颜色主题
+    theme: "dracula"  # dracula, monokai, solarized
+
+    # 字体样式
+    styles:
+      bold: true
+      italic: false
+      underline: false
+
+    # 动画
+    animations: true
+
+    # 滚动
+    scroll_speed: 5  # 每次滚动的行数
+
+  # CLI 配置
+  cli:
+    color_output: true
+    show_timestamp: false
+    verbose: false
+
+# 日志配置
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"  # json, text
+  output: "stdout"  # stdout, stderr, file
+
+  file:
+    path: "~/.local/share/kore/logs/kore.log"
+    max_size: 100  # MB
+    max_backups: 3
+    max_age: 7  # days
+
+# 插件配置（未来功能）
+plugins:
+  enabled: false
+  directory: "~/.local/share/kore/plugins"
+  auto_update: false

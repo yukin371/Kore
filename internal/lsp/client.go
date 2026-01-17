@@ -469,6 +469,62 @@ func (c *Client) Hover(ctx context.Context, uri string, pos Position) (*Hover, e
 	return &result, nil
 }
 
+// References 查找引用
+func (c *Client) References(ctx context.Context, uri string, pos Position) ([]Location, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.ReferencesProvider == nil {
+		return nil, fmt.Errorf("references not supported")
+	}
+
+	params := ReferencesParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Position:     pos,
+		Context: ReferenceContext{
+			IncludeDeclaration: false,
+		},
+	}
+
+	var result interface{}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/references", params, &result); err != nil {
+		return nil, fmt.Errorf("references request failed: %w", err)
+	}
+
+	// Handle Location array
+	return unmarshalLocations(result)
+}
+
+// DidSave 保存文档
+func (c *Client) DidSave(ctx context.Context, uri string, text *string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.initialized {
+		return fmt.Errorf("client not initialized")
+	}
+
+	if _, ok := c.documents[uri]; !ok {
+		return fmt.Errorf("document not open: %s", uri)
+	}
+
+	params := DidSaveTextDocumentParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Text:         text,
+	}
+
+	c.log.Debug("DidSave: %s", uri)
+	return c.rpc.Notify("textDocument/didSave", params)
+}
+
 // OnDiagnostics registers a handler for diagnostic notifications
 func (c *Client) OnDiagnostics(handler func(PublishDiagnosticsParams)) {
 	c.mu.Lock()

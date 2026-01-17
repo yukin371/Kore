@@ -216,6 +216,11 @@ func GetLanguageID(filename string) string {
 	}
 }
 
+// PathToURI converts a file path to a file URI（导出版本）
+func PathToURI(path string) string {
+	return pathToURI(path)
+}
+
 // pathToURI converts a file path to a file URI
 func pathToURI(path string) string {
 	// Convert absolute path to URI

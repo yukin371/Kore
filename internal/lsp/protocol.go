@@ -715,6 +715,20 @@ type PartialResultParams struct {
 	PartialResultToken interface{} `json:"partialResultToken,omitempty"`
 }
 
+// References
+
+type ReferencesParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	Context      ReferenceContext       `json:"context"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type ReferenceContext struct {
+	IncludeDeclaration bool `json:"includeDeclaration"`
+}
+
 // Hover
 
 type HoverParams struct {
