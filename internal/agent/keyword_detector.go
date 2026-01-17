@@ -6,68 +6,52 @@ package agent
 
 import (
 	"strings"
+
+	"github.com/yukin/kore/internal/types"
 )
 
 // KeywordDetector 关键词检测器
 type KeywordDetector struct {
-	keywords map[string]AgentMode
+	keywords map[types.AgentMode]string
 }
-
-// AgentMode Agent 模式
-type AgentMode string
-
-const (
-	ModeNormal   AgentMode = "normal"
-	ModeUltraWork AgentMode = "ultrawork"  // 最大性能模式
-	ModeSearch   AgentMode = "search"     // 搜索模式
-	ModeAnalyze  AgentMode = "analyze"    // 分析模式
-)
 
 // NewKeywordDetector 创建关键词检测器
 func NewKeywordDetector() *KeywordDetector {
 	return &KeywordDetector{
-		keywords: map[string]AgentMode{
+		keywords: map[types.AgentMode]string{
 			// ultrawork 及其缩写
-			"ultrawork":     ModeUltraWork,
-			"ulw":           ModeUltraWork,
-			"超级工作":      ModeUltraWork,
-			"最大化性能":    ModeUltraWork,
-			"开足马力":      ModeUltraWork,
+			types.ModeUltraWork: "ultrawork|ulw|超级工作|最大化性能|开足马力",
 
 			// search 及其变体
-			"search":       ModeSearch,
-			"find":         ModeSearch,
-			"搜索":         ModeSearch,
-			"查找":         ModeSearch,
-			"检索":         ModeSearch,
+			types.ModeSearch: "search|find|搜索|查找|检索",
 
 			// analyze 及其变体
-			"analyze":      ModeAnalyze,
-			"investigate":   ModeAnalyze,
-			"分析":         ModeAnalyze,
-			"调查":         ModeAnalyze,
-			"深度分析":     ModeAnalyze,
+			types.ModeAnalyze: "analyze|investigate|分析|调查|深度分析",
 		},
 	}
 }
 
 // Detect 检测提示中的关键词
-func (kd *KeywordDetector) Detect(prompt string) (AgentMode, bool) {
+func (kd *KeywordDetector) Detect(prompt string) (types.AgentMode, bool) {
 	if prompt == "" {
-		return ModeNormal, false
+		return types.ModeNormal, false
 	}
 
 	// 转换为小写进行匹配
 	promptLower := strings.ToLower(prompt)
 
 	// 检查所有关键词
-	for keyword, mode := range kd.keywords {
-		if strings.Contains(promptLower, strings.ToLower(keyword)) {
-			return mode, true
+	for mode, keywords := range kd.keywords {
+		// 分割关键词（用 | 分隔）
+		keywordList := strings.Split(keywords, "|")
+		for _, keyword := range keywordList {
+			if strings.Contains(promptLower, strings.ToLower(keyword)) {
+				return mode, true
+			}
 		}
 	}
 
-	return ModeNormal, false
+	return types.ModeNormal, false
 }
 
 // DetectWithDetails 检测并返回详细信息
@@ -83,9 +67,9 @@ func (kd *KeywordDetector) DetectWithDetails(prompt string) *KeywordMatch {
 
 // KeywordMatch 关键词匹配结果
 type KeywordMatch struct {
-	Mode     AgentMode
+	Mode     types.AgentMode
 	Detected bool
-	Keyword string
+	Keyword  string
 }
 
 func (kd *KeywordDetector) extractMatchedKeyword(prompt string) string {
@@ -95,83 +79,14 @@ func (kd *KeywordDetector) extractMatchedKeyword(prompt string) string {
 	}
 
 	promptLower := strings.ToLower(prompt)
-	for keyword := range kd.keywords {
-		if strings.Contains(promptLower, strings.ToLower(keyword)) {
-			return keyword
+	for mode, keywords := range kd.keywords {
+		keywordList := strings.Split(keywords, "|")
+		for _, keyword := range keywordList {
+			if strings.Contains(promptLower, strings.ToLower(keyword)) {
+				return keyword
+			}
 		}
+		_ = mode // 避免未使用变量警告
 	}
 	return ""
-}
-
-// GetModeDescription 获取模式描述
-func (am AgentMode) String() string {
-	switch am {
-	case ModeUltraWork:
-		return "超级工作模式 (ultrawork) - 最大性能，并行智能体编排"
-	case ModeSearch:
-		return "搜索模式 - 最大化搜索力度，并行 explore 和 librarian"
-	case ModeAnalyze:
-		return "分析模式 - 深度分析，多阶段专家咨询"
-	default:
-		return "正常模式"
-	}
-}
-
-// GetModeConfiguration 获取模式对应的配置调整
-func (am AgentMode) GetConfiguration() *ModeConfiguration {
-	switch am {
-	case ModeUltraWork:
-		return &ModeConfiguration{
-			ParallelTools:        true,
-			MaxConcurrency:       10,
-			AggressiveSearch:     true,
-			UseAllSpecialists:    true,
-			ContextStrategy:      "minimal", // 最小化上下文
-			TemperatureBoost:      0.1,    // 提高创造性
-		}
-
-	case ModeSearch:
-		return &ModeConfiguration{
-			ParallelTools:        true,
-			MaxConcurrency:       5,
-			AggressiveSearch:     true,
-			UseSpecialists:       []string{"explore", "librarian"},
-			ContextStrategy:      "search_focused",
-			EnableASTGrep:        true,
-		}
-
-	case ModeAnalyze:
-		return &ModeConfiguration{
-			ParallelTools:        false,
-			MaxConcurrency:       1,
-			AggressiveSearch:     false,
-			UseSpecialists:       []string{"oracle"},
-			ContextStrategy:      "comprehensive",
-			EnableDeepThinking:    true,
-			ReasoningEffort:     "high",
-		}
-
-	default:
-		return &ModeConfiguration{
-			ParallelTools:        false,
-			MaxConcurrency:       1,
-			AggressiveSearch:     false,
-			UseAllSpecialists:    false,
-			ContextStrategy:      "balanced",
-		}
-	}
-}
-
-// ModeConfiguration 模式配置
-type ModeConfiguration struct {
-	ParallelTools        bool              // 是否并行执行工具
-	MaxConcurrency       int               // 最大并发数
-	AggressiveSearch     bool              // 激进搜索
-	UseAllSpecialists    bool              // 使用所有专业智能体
-	UseSpecialists       []string          // 指定使用的智能体
-	ContextStrategy      string            // 上下文策略
-	TemperatureBoost      float32           // 温度提升
-	EnableASTGrep        bool              // 启用 AST Grep
-	EnableDeepThinking    bool              // 启用深度思考
-	ReasoningEffort     string            // 推理努力度
 }

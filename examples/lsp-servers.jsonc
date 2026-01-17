@@ -1,0 +1,165 @@
+// LSP Servers Configuration
+// This file configures language servers for Kore
+
+{
+	// Go language server (gopls)
+	"go": {
+		"command": "gopls",
+		"args": ["serve"],
+		"enabled": true,
+		"priority": 10
+	},
+
+	// Python language server (pyright)
+	"python": {
+		"command": "pyright-langserver",
+		"args": ["--stdio"],
+		"enabled": true,
+		"priority": 10
+	},
+
+	// JavaScript language server (typescript-language-server)
+	"javascript": {
+		"command": "typescript-language-server",
+		"args": ["--stdio"],
+		"enabled": true,
+		"priority": 10
+	},
+
+	// TypeScript language server (typescript-language-server)
+	"typescript": {
+		"command": "typescript-language-server",
+		"args": ["--stdio"],
+		"enabled": true,
+		"priority": 10
+	},
+
+	// Rust language server (rust-analyzer)
+	"rust": {
+		"command": "rust-analyzer",
+		"args": [],
+		"enabled": true,
+		"priority": 10
+	},
+
+	// JSON language server
+	"json": {
+		"command": "vscode-json-language-server",
+		"args": ["--stdio"],
+		"enabled": true,
+		"priority": 5
+	},
+
+	// YAML language server
+	"yaml": {
+		"command": "yaml-language-server",
+		"args": ["--stdio"],
+		"enabled": true,
+		"priority": 5
+	},
+
+	// C/C++ language server (clangd)
+	"c": {
+		"command": "clangd",
+		"args": ["--background-index"],
+		"enabled": false,
+		"priority": 10
+	},
+
+	"cpp": {
+		"command": "clangd",
+		"args": ["--background-index"],
+		"enabled": false,
+		"priority": 10
+	},
+
+	// Java language server (jdtls)
+	"java": {
+		"command": "jdtls",
+		"args": [],
+		"enabled": false,
+		"priority": 10
+	},
+
+	// Shell script language server (bash-language-server)
+	"shellscript": {
+		"command": "bash-language-server",
+		"args": ["start"],
+		"enabled": true,
+		"priority": 5
+	},
+
+	// HTML language server
+	"html": {
+		"command": "vscode-html-language-server",
+		"args": ["--stdio"],
+		"enabled": false,
+		"priority": 5
+	},
+
+	// CSS language server
+	"css": {
+		"command": "vscode-css-language-server",
+		"args": ["--stdio"],
+		"enabled": false,
+		"priority": 5
+	},
+
+	// Markdown language server
+	"markdown": {
+		"command": "marksman",
+		"args": ["server"],
+		"enabled": false,
+		"priority": 5
+	}
+}
+
+/*
+Installation Instructions:
+
+1. Go (gopls):
+   go install golang.org/x/tools/gopls@latest
+
+2. Python (pyright):
+   npm install -g pyright
+   # OR
+   pip install pyright
+
+3. JavaScript/TypeScript (typescript-language-server):
+   npm install -g typescript-language-server typescript
+
+4. Rust (rust-analyzer):
+   rustup component add rust-analyzer
+
+5. JSON (vscode-json-language-server):
+   npm install -g vscode-json-languageserver
+
+6. YAML (yaml-language-server):
+   npm install -g yaml-language-server
+
+7. C/C++ (clangd):
+   # macOS
+   brew install llvm
+   # Linux
+   apt-get install clangd-12
+   # Windows
+   # Download from https://github.com/clangd/clangd/releases
+
+8. Java (jdtls):
+   # Download from https://download.eclipse.org/jdtls/snapshots/
+
+9. Shell script (bash-language-server):
+   npm install -g bash-language-server
+
+10. HTML (vscode-html-language-server):
+    npm install -g vscode-html-languageserver
+
+11. CSS (vscode-css-language-server):
+    npm install -g vscode-css-languageserver
+
+12. Markdown (marksman):
+    # macOS
+    brew install marksman
+    # Linux
+    # Download from https://github.com/artempyanykh/marksman/releases
+*/
