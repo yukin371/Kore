@@ -2,13 +2,13 @@
 
 **实施日期**: 2026-01-17
 **版本**: 2.0.1-dev
-**状态**: Phase 1 进行中（已完成 4/7 项）
+**状态**: Phase 1 进行中（已完成 5/7 项）
 
 ---
 
 ## 📊 实施进度
 
-### ✅ 已完成（Phase 1.1-1.4）
+### ✅ 已完成（Phase 1.1-1.5）
 
 #### 1.1. 上下文窗口监控 ⭐⭐⭐⭐⭐
 
@@ -124,9 +124,52 @@ reminders := continuator.GetReminders()
 
 ---
 
-### ⏳ 待实施（Phase 1.5-1.7）
+#### 1.5. AGENTS.md 自动注入 ⭐⭐⭐⭐
 
-#### 1.5 AGENTS.md 自动注入（预计 2-3 小时）
+**文件**: `internal/core/agents_md.go`
+
+**功能**：
+- 向上遍历目录树查找所有 AGENTS.md 文件
+- 按优先级排序（越接近当前目录优先级越高）
+- 自动注入到 AI 上下文中
+- 智能缓存机制（1小时过期）
+- 支持启用/禁用功能
+- 提供验证和查找功能
+
+**使用方式**：
+```go
+// 在 ContextManager 中已自动集成
+contextMgr := core.NewContextManager(projectRoot, maxTokens)
+
+// 控制 AGENTS.md 加载
+contextMgr.EnableAGENTSMD()
+contextMgr.DisableAGENTSMD()
+
+// 查找所有 AGENTS.md 文件
+paths, err := contextMgr.FindAllAGENTSMD()
+
+// 刷新缓存
+err := contextMgr.RefreshAGENTSMDCache()
+```
+
+**示例 AGENTS.md**：
+```markdown
+# Kore 项目
+
+## 项目概述
+Kore 是一个 AI 驱动的工作流自动化平台。
+
+## 架构说明
+- Agent: AI 代理
+- ContextManager: 智能上下文管理
+- LLMProvider: 统一的 LLM 接口
+```
+
+---
+
+### ⏳ 待实施（Phase 1.6-1.7）
+
+#### 1.6 复用 TUI Viewport 组件（预计 2-3 小时）
 - 向上遍历目录树
 - 收集所有 AGENTS.md
 - 优先级排序注入
@@ -202,7 +245,6 @@ Ralph Loop 模式启动！将持续执行直到任务完成。
 
 | 任务 | 预计时间 | 价值 |
 |------|---------|------|
-| AGENTS.md 注入 | 2-3 小时 | ⭐⭐⭐⭐ |
 | TUI Viewport 复用 | 2-3 小时 | ⭐⭐⭐ |
 | 配置系统更新 | 1-2 小时 | ⭐⭐⭐ |
 

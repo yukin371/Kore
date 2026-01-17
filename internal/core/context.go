@@ -28,13 +28,14 @@ type ProjectContext struct {
 
 // ContextManager manages project context with layered strategy
 type ContextManager struct {
-	projectRoot  string
+	projectRoot   string
 	ignoreMatcher *IgnoreMatcher
 	focusedPaths  map[string]bool
 	focusLRU      *LRU
 	maxTokens     int
 	maxTreeDepth  int
 	maxFilesPerDir int
+	agentsMDLoader *AGENTSMDLoader
 	mu            sync.RWMutex
 }
 
@@ -195,13 +196,14 @@ func (l *LRU) Touch(key string) {
 // NewContextManager 创建新的上下文管理器
 func NewContextManager(projectRoot string, maxTokens int) *ContextManager {
 	return &ContextManager{
-		projectRoot:   projectRoot,
-		ignoreMatcher: NewIgnoreMatcher(projectRoot),
-		focusedPaths:  make(map[string]bool),
-		focusLRU:      NewLRU(20), // 最多跟踪 20 个焦点文件
-		maxTokens:     maxTokens,
-		maxTreeDepth:  5,
+		projectRoot:    projectRoot,
+		ignoreMatcher:  NewIgnoreMatcher(projectRoot),
+		focusedPaths:   make(map[string]bool),
+		focusLRU:       NewLRU(20), // 最多跟踪 20 个焦点文件
+		maxTokens:      maxTokens,
+		maxTreeDepth:   5,
 		maxFilesPerDir: 50,
+		agentsMDLoader: NewAGENTSMDLoader(projectRoot),
 	}
 }
 
@@ -216,6 +218,21 @@ func (c *ContextManager) BuildContext(ctx context.Context) (*ProjectContext, err
 	}
 
 	focusedFiles := c.getFocusedFiles()
+
+	// 添加 AGENTS.md 内容
+	if c.agentsMDLoader.IsEnabled() {
+		agentsMDContext, err := c.agentsMDLoader.GenerateContext(c.projectRoot)
+		if err == nil && agentsMDContext != "" {
+			// 将 AGENTS.md 内容作为一个特殊的"文件"添加到焦点文件中
+			focusedFiles = append([]File{
+				{
+					Path:    "AGENTS.md",
+					Content: agentsMDContext,
+				},
+			}, focusedFiles...)
+		}
+	}
+
 	totalTokens := c.estimateTokens(fileTree, focusedFiles)
 
 	return &ProjectContext{
@@ -545,4 +562,29 @@ func (c *ContextManager) ReadFile(path string) (string, error) {
 // GetProjectRoot returns the project root path
 func (c *ContextManager) GetProjectRoot() string {
 	return c.projectRoot
+}
+
+// GetAGENTSMDLoader 获取 AGENTS.md 加载器
+func (c *ContextManager) GetAGENTSMDLoader() *AGENTSMDLoader {
+	return c.agentsMDLoader
+}
+
+// EnableAGENTSMD 启用 AGENTS.md 自动注入
+func (c *ContextManager) EnableAGENTSMD() {
+	c.agentsMDLoader.Enable()
+}
+
+// DisableAGENTSMD 禁用 AGENTS.md 自动注入
+func (c *ContextManager) DisableAGENTSMD() {
+	c.agentsMDLoader.Disable()
+}
+
+// RefreshAGENTSMDCache 刷新 AGENTS.md 缓存
+func (c *ContextManager) RefreshAGENTSMDCache() error {
+	return c.agentsMDLoader.RefreshCache(c.projectRoot)
+}
+
+// FindAllAGENTSMD 查找项目中所有 AGENTS.md 文件
+func (c *ContextManager) FindAllAGENTSMD() ([]string, error) {
+	return c.agentsMDLoader.FindAllAgentsMD(c.projectRoot)
 }

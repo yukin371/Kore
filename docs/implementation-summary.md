@@ -1,7 +1,7 @@
 # Kore 2.0 - 实施总结
 
 **日期**: 2026-01-17
-**状态**: Phase 1 完成 57% (4/7 项)
+**状态**: Phase 1 完成 71% (5/7 项)
 **版本**: 2.0.1-dev
 
 ---
@@ -26,15 +26,15 @@
    - 实施优先级和架构调整建议
 
 4. **实施总结**: `docs/phase1-improvements-summary.md`
-   - Phase 1 已完成的 4 个特性
-   - 剩余 3 个待实施的特性
+   - Phase 1 已完成的 5 个特性
+   - 剩余 2 个待实施的特性
    - 代码复用记录
 
 ---
 
 ## 🎯 Phase 1 实施详情
 
-### ✅ 已实施的 4 个关键特性
+### ✅ 已实施的 5 个关键特性
 
 #### 1. 上下文窗口监控
 **文件**: `internal/agent/context_monitor.go` (155 行)
@@ -111,6 +111,27 @@
 
 ---
 
+#### 5. AGENTS.md 自动注入
+**文件**: `internal/core/agents_md.go` (348 行)
+
+**核心功能**:
+- 向上遍历目录树查找所有 AGENTS.md 文件
+- 按优先级排序（越接近当前目录优先级越高）
+- 自动注入到 AI 上下文中
+- 智能缓存机制（1小时过期）
+- 支持启用/禁用功能
+- 提供验证和查找功能
+
+**价值**: ⭐⭐⭐⭐
+- 项目特定上下文自动加载
+- 无需手动说明项目结构
+- 支持多层级项目文档
+- 提升AI对项目的理解
+
+**灵感来源**: [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
+
+---
+
 ## 📊 统计数据
 
 ### 代码新增
@@ -121,7 +142,8 @@
 | `internal/agent/ralph_loop.go` | 280 | Ralph Loop |
 | `internal/agent/keyword_detector.go` | 176 | 关键词检测 |
 | `internal/agent/todo_continuator.go` | 548 | TODO 继续执行器 |
-| **总计** | **1159** | **纯新增代码** |
+| `internal/core/agents_md.go` | 348 | AGENTS.md 加载器 |
+| **总计** | **1507** | **纯新增代码** |
 
 ### 文档新增
 
@@ -135,25 +157,18 @@
 
 ---
 
-## 📋 剩余工作（Phase 1.5-1.7）
+## 📋 剩余工作（Phase 1.6-1.7）
 
 ### 优先级排序
 
-#### 高优先级（必做）
-
-1. **AGENTS.md 自动注入** (2-3 小时)
-   - 向上遍历目录树查找所有 AGENTS.md
-   - 按优先级注入上下文
-   - 缓存机制避免重复读取
-
 #### 中优先级（推荐）
 
-2. **TUI Viewport 组件复用** (2-3 小时)
+1. **TUI Viewport 组件复用** (2-3 小时)
    - 从 opencode-ai/opencode 复制 viewport.go
    - 适配 Kore 的架构
    - 集成到现有 TUI 系统
 
-3. **配置系统更新** (1-2 小时)
+2. **配置系统更新** (1-2 小时)
    - 支持 JSONC 配置（带注释的 JSON）
    - 多位置配置加载
    - Schema 验证
