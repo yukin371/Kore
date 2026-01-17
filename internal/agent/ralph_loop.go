@@ -33,7 +33,7 @@ func DefaultRalphLoopConfig() *RalphLoopConfig {
 // RalphLoopController Ralph Loop 控制器
 type RalphLoopController struct {
 	config        *RalphLoopConfig
-	agent         *Agent
+	agent         *core.Agent
 	contextMgr    *core.ContextManager
 	llmProvider   core.LLMProvider
 	toolExecutor  core.ToolExecutor
@@ -48,7 +48,7 @@ type RalphLoopController struct {
 
 // NewRalphLoopController 创建 Ralph Loop 控制器
 func NewRalphLoopController(
-	agent *Agent,
+	agent *core.Agent,
 	contextMgr *core.ContextManager,
 	llmProvider core.LLMProvider,
 	toolExecutor core.ToolExecutor,
@@ -57,13 +57,12 @@ func NewRalphLoopController(
 ) *RalphLoopController {
 	return &RalphLoopController{
 		config:       config,
-		agent:       agent,
+		agent:        agent,
 		contextMgr:   contextMgr,
 		llmProvider:  llmProvider,
 		toolExecutor: toolExecutor,
 		ui:           ui,
 		history:      core.NewConversationHistory(),
-		config:       config,
 		startTime:    time.Now(),
 	}
 }
@@ -80,9 +79,6 @@ func (rlc *RalphLoopController) Run(ctx context.Context, prompt string) error {
 
 	// 添加初始用户消息
 	rlc.history.AddUserMessage(prompt)
-
-	// 检查最后一条助手消息
-	if len(rlc.history.messages) == 0 {
 
 	for rlc.currentLoop < rlc.config.MaxIterations {
 		// 检查上下文使用率
@@ -132,11 +128,11 @@ func (rlc *RalphLoopController) Run(ctx context.Context, prompt string) error {
 // isTaskComplete 检查任务是否完成
 func (rlc *RalphLoopController) isTaskComplete() bool {
 	// 检查最后一条助手消息
-	if len(rlc.history.messages) == 0 {
+	if len(rlc.history.GetMessages()) == 0 {
 		return false
 	}
 
-	lastMsg := rlc.history.messages[len(rlc.history.messages)-1]
+	lastMsg := rlc.history.GetMessages()[len(rlc.history.GetMessages())-1]
 
 	// 检查是否包含 DONE 标记
 	if lastMsg.Role == "assistant" {
@@ -145,7 +141,7 @@ func (rlc *RalphLoopController) isTaskComplete() bool {
 	}
 
 	// 检查工具输出中是否有完成标记
-	for _, msg := range rlc.history.messages {
+	for _, msg := range rlc.history.GetMessages() {
 		if msg.Role == "tool" {
 			if strings.Contains(strings.ToUpper(msg.Content), strings.ToUpper(rlc.config.DoneToken)) {
 				return true
@@ -181,13 +177,13 @@ func (rlc *RalphLoopController) generateNextPrompt(ctx context.Context) string {
 
 	// 添加最近的对话（简化版，节省 token）
 	maxHistory := 5  // 只保留最近 5 条消息
-	startIdx := len(rlc.history.messages) - maxHistory
+	startIdx := len(rlc.history.GetMessages()) - maxHistory
 	if startIdx < 0 {
 		startIdx = 0
 	}
 
-	for i := startIdx; i < len(rlc.history.messages); i++ {
-		msg := rlc.history.messages[i]
+	for i := startIdx; i < len(rlc.history.GetMessages()); i++ {
+		msg := rlc.history.GetMessages()[i]
 		prompt.WriteString(fmt.Sprintf("**%s**: %s\n\n", msg.Role, msg.Content))
 	}
 
@@ -240,13 +236,13 @@ func (rlc *RalphLoopController) checkAndHandleContext(ctx context.Context) error
 // GetStatistics 获取统计信息
 func (rlc *RalphLoopController) GetStatistics() *RalphLoopStatistics {
 	rlc.mu.RLock()
-	defer rlc.RUnlock()
+	defer rlc.mu.RUnlock()
 
 	duration := time.Since(rlc.startTime)
 
 	return &RalphLoopStatistics{
 		CurrentLoop: rlc.currentLoop,
-	TotalActions: len(rlc.history.messages),
+	TotalActions: len(rlc.history.GetMessages()),
 		Duration:     duration,
 	IsRunning:    rlc.currentLoop < rlc.config.MaxIterations,
 	}
@@ -263,7 +259,7 @@ type RalphLoopStatistics struct {
 // IsActive 检查 Ralph Loop 是否活跃
 func (rlc *RalphLoopController) IsActive() bool {
 	rlc.mu.RLock()
-	defer rlc.RUnlock()
+	defer rlc.mu.RUnlock()
 	return rlc.currentLoop > 0 && rlc.currentLoop < rlc.config.MaxIterations
 }
 
@@ -276,7 +272,7 @@ func (rlc *RalphLoopController) Cancel() {
 }
 
 // EnableRalphLoop 在现有 Agent 中启用 Ralph Loop 模式
-func EnableRalphLoop(agent *Agent, config *RalphLoopConfig) *RalphLoopController {
+func EnableRalphLoop(agent *core.Agent, config *RalphLoopConfig) *RalphLoopController {
 	return &RalphLoopController{
 		agent:        agent,
 		contextMgr:   agent.ContextMgr,

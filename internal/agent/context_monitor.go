@@ -61,7 +61,7 @@ func (cm *ContextMonitor) calculateUsage(history *core.ConversationHistory, maxT
 	totalTokens := 0
 
 	// 估算所有消息的 token 数量
-	for _, msg := range history.Messages {
+	for _, msg := range history.GetMessages() {
 		totalTokens += estimator.EstimateTokens(msg.Content)
 		totalTokens += estimator.EstimateTokens(msg.Role) // role 字段
 	}
@@ -75,7 +75,7 @@ func (cm *ContextMonitor) GetUsageReport(history *core.ConversationHistory, mode
 	estimator := &TokenEstimator{}
 	totalTokens := 0
 
-	for _, msg := range history.Messages {
+	for _, msg := range history.GetMessages() {
 		totalTokens += estimator.EstimateTokens(msg.Content)
 	}
 
@@ -145,8 +145,8 @@ func (cm *ContextMonitor) CreateCompressionPrompt(history *core.ConversationHist
 
 	// 保留最近的用户请求
 	lastUserIdx := -1
-	for i := len(history.Messages) - 1; i >= 0; i-- {
-		if history.Messages[i].Role == "user" {
+	for i := len(history.GetMessages()) - 1; i >= 0; i-- {
+		if history.GetMessages()[i].Role == "user" {
 			lastUserIdx = i
 			break
 		}
@@ -154,7 +154,7 @@ func (cm *ContextMonitor) CreateCompressionPrompt(history *core.ConversationHist
 
 	if lastUserIdx >= 0 {
 		summary.WriteString(fmt.Sprintf("## 最近的任务\n%s\n\n",
-			history.Messages[lastUserIdx].Content))
+			history.GetMessages()[lastUserIdx].Content))
 	}
 
 	// 列出所有未完成的 TODO
@@ -180,7 +180,7 @@ func (cm *ContextMonitor) CreateCompressionPrompt(history *core.ConversationHist
 func (cm *ContextMonitor) extractTodos(history *core.ConversationHistory) []Todo {
 	var todos []Todo
 
-	for _, msg := range history.Messages {
+	for _, msg := range history.GetMessages() {
 		// 简单的 TODO 检测
 		lines := strings.Split(msg.Content, "\n")
 		for _, line := range lines {
@@ -195,10 +195,4 @@ func (cm *ContextMonitor) extractTodos(history *core.ConversationHistory) []Todo
 	}
 
 	return todos
-}
-
-// Todo TODO 事项
-type Todo struct {
-	Description string
-	Done       bool
 }

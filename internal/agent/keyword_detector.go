@@ -46,8 +46,8 @@ func NewKeywordDetector() *KeywordDetector {
 			"investigate":   ModeAnalyze,
 			"分析":         ModeAnalyze,
 			"调查":         ModeAnalyze,
-		"深度分析":     ModeAnalyze,
-	},
+			"深度分析":     ModeAnalyze,
+		},
 	}
 }
 
@@ -89,7 +89,8 @@ type KeywordMatch struct {
 }
 
 func (kd *KeywordDetector) extractMatchedKeyword(prompt string) string {
-	if !kd.Detect(prompt) {
+	_, detected := kd.Detect(prompt)
+	if !detected {
 		return ""
 	}
 
@@ -158,6 +159,7 @@ func (am AgentMode) GetConfiguration() *ModeConfiguration {
 			UseAllSpecialists:    false,
 			ContextStrategy:      "balanced",
 		}
+	}
 }
 
 // ModeConfiguration 模式配置
