@@ -155,6 +155,7 @@ func TestViewportComponent_Autoscroll(t *testing.T) {
 // TestViewportComponent_ScrollPercentage 测试滚动百分比
 func TestViewportComponent_ScrollPercentage(t *testing.T) {
 	vp := NewViewportComponent()
+	vp.SetSize(80, 20)
 
 	// 添加一些消息
 	for i := 0; i < 5; i++ {

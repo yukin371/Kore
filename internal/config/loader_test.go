@@ -360,11 +360,15 @@ func TestSave(t *testing.T) {
 		},
 		Context: ContextConfig{
 			MaxTokens:      16000,
-			MaxFilesPerDir: 100, // Must be >= 1
+			MaxTreeDepth:   5,     // Must be >= 1
+			MaxFilesPerDir: 100,   // Must be >= 1
 		},
 		Security: SecurityConfig{
 			BlockedCmds:  []string{"rm"},
 			BlockedPaths: []string{".git"},
+		},
+		UI: UIConfig{
+			Mode: "cli",
 		},
 	}
 
