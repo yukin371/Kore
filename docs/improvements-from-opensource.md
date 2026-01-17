@@ -398,9 +398,9 @@ func LoadConfig(configPath string) (*Config, error) {
 3. [ ] 关键词检测（`ultrawork`）
 
 ### Phase 2（1-2 周内）
-4. [ ] Todo 继续执行器
-5. [ ] AGENTS.md 自动注入
-6. [ ] 复用 TUI Viewport 组件
+4. [x] Todo 继续执行器
+5. [x] AGENTS.md 自动注入
+6. [x] 复用 TUI Viewport 组件
 
 ### Phase 3（2-4 周内）
 7. [ ] 专业智能体系统（Oracle、Librarian）
