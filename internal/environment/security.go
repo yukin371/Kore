@@ -57,6 +57,7 @@ func (si *SecurityInterceptor) setupDefaults() {
 			"grep", "find", "sed", "awk", "wc", "sort", "uniq", "cut",
 			"mkdir", "touch", "cp", "mv", "rm",
 			"curl", "wget", "ssh", "scp",
+			"ping", // 网络诊断工具
 		}
 		for _, cmd := range standardCommands {
 			si.allowedCommands[cmd] = true
@@ -85,26 +86,57 @@ func (si *SecurityInterceptor) ValidatePath(path string) error {
 	// 清理路径
 	cleanPath := filepath.Clean(path)
 
-	// 转换为绝对路径
-	absPath, err := filepath.Abs(cleanPath)
-	if err != nil {
-		return fmt.Errorf("无法解析路径: %w", err)
-	}
-
-	// 检查是否在允许的目录内
-	for _, allowedDir := range si.allowedDirs {
-		allowedAbs, err := filepath.Abs(allowedDir)
+	// 检查路径遍历攻击
+	// 如果包含 .. 则需要验证
+	if strings.Contains(cleanPath, "..") {
+		// 转换为绝对路径以解析 ..
+		absPath, err := filepath.Abs(cleanPath)
 		if err != nil {
-			continue
+			return fmt.Errorf("无法解析路径: %w", err)
 		}
 
-		// 检查路径是否在允许的目录下
-		if strings.HasPrefix(absPath, allowedAbs+string(os.PathSeparator)) || absPath == allowedAbs {
-			return nil
+		// 检查是否在允许的目录内
+		for _, allowedDir := range si.allowedDirs {
+			allowedAbs, err := filepath.Abs(allowedDir)
+			if err != nil {
+				continue
+			}
+
+			// 检查路径是否在允许的目录下
+			if strings.HasPrefix(absPath, allowedAbs+string(os.PathSeparator)) || absPath == allowedAbs {
+				return nil
+			}
 		}
+
+		return fmt.Errorf("路径访问被拒绝: %s 尝试路径遍历", path)
 	}
 
-	return fmt.Errorf("路径访问被拒绝: %s 不在允许的目录列表中", path)
+	// 如果是绝对路径，需要验证是否在允许的目录内
+	if filepath.IsAbs(cleanPath) {
+		absPath, err := filepath.Abs(cleanPath)
+		if err != nil {
+			return fmt.Errorf("无法解析路径: %w", err)
+		}
+
+		// 检查是否在允许的目录内
+		for _, allowedDir := range si.allowedDirs {
+			allowedAbs, err := filepath.Abs(allowedDir)
+			if err != nil {
+				continue
+			}
+
+			// 检查路径是否在允许的目录下
+			if strings.HasPrefix(absPath, allowedAbs+string(os.PathSeparator)) || absPath == allowedAbs {
+				return nil
+			}
+		}
+
+		return fmt.Errorf("路径访问被拒绝: %s 不在允许的目录列表中", path)
+	}
+
+	// 相对路径且不包含 .. （例如 "test/file.txt"）是安全的
+	// 它会被 LocalEnvironment 转换为工作目录下的路径
+	return nil
 }
 
 // ValidateCommand 验证命令是否安全

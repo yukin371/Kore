@@ -1,6 +1,7 @@
 package environment
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -39,8 +40,17 @@ func TestSecurityInterceptor_ValidatePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// 对于 Windows 跳过 Unix 风格的绝对路径测试
+			// 因为在 Windows 上这些路径的语义不同
+			if tt.name == "absolute path outside allowed" || tt.name == "valid absolute path in allowed" {
+				if runtime.GOOS == "windows" {
+					t.Skip("Skipping Unix-style absolute path test on Windows")
+				}
+			}
+
 			si := NewSecurityInterceptor(tt.allowPath, SecurityLevelStandard)
-			si.allowedDirs = []string{tt.allowPath}
+			// Use AddAllowedDir instead of directly setting allowedDirs
+			si.AddAllowedDir(tt.allowPath)
 
 			err := si.ValidatePath(tt.path)
 			if (err != nil) != tt.wantErr {

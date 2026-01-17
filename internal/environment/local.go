@@ -85,7 +85,13 @@ func (env *LocalEnvironment) Execute(ctx context.Context, cmd *Command) (*Result
 		if exitError, ok := err.(*exec.ExitError); ok {
 			exitCode = exitError.ExitCode()
 		} else {
-			return nil, fmt.Errorf("命令执行失败: %w", err)
+			// 对于超时等错误，仍然返回结果（包含已输出的内容）
+			// 不返回 nil，这样调用者可以获得部分输出
+			return &Result{
+				ExitCode: -1, // 使用 -1 表示异常终止（如超时）
+				Stdout:   stdout.String(),
+				Stderr:   stderr.String(),
+			}, fmt.Errorf("命令执行失败: %w", err)
 		}
 	}
 
