@@ -1,0 +1,774 @@
+package tui
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// ========== 状态枚举定义 ==========
+
+// StatusState 表示当前的操作状态
+type StatusState int
+
+const (
+	StatusIdle      StatusState = iota // 空闲
+	StatusThinking                      // AI 思考中
+	StatusReading                       // 读取文件
+	StatusSearching                     // 搜索代码
+	StatusExecuting                     // 执行工具
+	StatusStreaming                     // 生成回复
+	StatusSuccess                       // 成功（临时）
+	StatusError                         // 错误（临时）
+)
+
+// AnimatedStatus 动画状态管理器
+type AnimatedStatus struct {
+	state       StatusState       // 当前状态
+	spinner     spinner.Model     // 动画 spinner
+	message     string            // 状态消息
+	progress    int               // 进度 0-100
+	timestamp   time.Time         // 用于自动重置
+	showDetails bool              // 是否显示详细工具信息
+	payload     map[string]string // 上下文元数据
+}
+
+// ========== 消息类型定义 ==========
+
+// StreamMsg 流式内容消息
+type StreamMsg string
+
+// MarkdownMsg Markdown 内容消息
+type MarkdownMsg string
+
+// StatusMsg 状态更新消息
+type StatusMsg string
+
+// ThinkingStartMsg 开始思考状态
+type ThinkingStartMsg struct{}
+
+// ThinkingStopMsg 停止思考状态
+type ThinkingStopMsg struct{}
+
+// ConfirmMsg 确认对话框消息
+type ConfirmMsg struct {
+	Action string   // 工具名称
+	Args   string   // 工具参数
+	Reply  chan bool // 用户选择的回复通道
+}
+
+// DiffConfirmMsg 带 diff 的确认消息
+type DiffConfirmMsg struct {
+	Path     string   // 文件路径
+	DiffText string   // Diff 内容
+	Reply    chan bool // 用户选择的回复通道
+}
+
+// UserInputMsg 用户输入提交消息
+type UserInputMsg struct {
+	Input string       // 用户输入的内容
+	Reply chan bool    // 确认通道（处理完成后通知）
+}
+
+// TickMsg 定时器消息（用于刷新 UI）
+type TickMsg time.Time
+
+// SpinnerTickMsg Spinner 定时器消息
+type SpinnerTickMsg time.Time
+
+// ========== Model 结构体 ==========
+
+// Model 是 Bubble Tea 的核心 Model
+type Model struct {
+	// 消息内容
+	messages []string
+
+	// 当前正在输入的流式内容
+	currentStream strings.Builder
+
+	// 状态栏文本
+	status string
+
+	// Markdown 渲染器
+	markdownRenderer *glamour.TermRenderer
+
+	// 思考状态
+	thinking      bool
+	thinkingSpinner spinner.Model
+
+	// 【新增】动画状态管理器（将逐步替换 thinking bool）
+	animatedStatus AnimatedStatus
+
+	// 用户输入框
+	textInput     textinput.Model
+	inputActive   bool // 是否激活输入状态
+	inputReply    chan bool // 输入提交后的确认通道
+	inputCallback func(string) // 输入提交的回调函数
+
+	// 确认对话框状态
+	confirming     bool   // 是否显示确认对话框
+	confirmAction  string // 要执行的工具名称
+	confirmArgs    string // 工具参数
+	confirmReply   chan bool
+	confirmChoice  int // 0=是, 1=否
+
+	// Diff 确认对话框状态
+	diffConfirming    bool
+	diffConfirmPath   string
+	diffConfirmText   string
+	diffConfirmReply  chan bool
+	diffConfirmChoice int
+
+	// 视口设置（支持滚动）
+	scrollOffset int
+
+	// 终端尺寸
+	width  int
+	height int
+
+	// 样式配置
+	styles *Styles
+}
+
+// ========== 样式配置 ==========
+
+// Styles 定义 TUI 样式
+type Styles struct {
+	// 通用样式
+	App       lipgloss.Style
+	StatusBar lipgloss.Style
+	Message   lipgloss.Style
+	Stream    lipgloss.Style
+	ToolCall  lipgloss.Style
+	Error     lipgloss.Style
+	Success   lipgloss.Style
+
+	// 对话框样式
+	Dialog         lipgloss.Style
+	DialogTitle    lipgloss.Style
+	DialogContent lipgloss.Style
+	DialogOption   lipgloss.Style
+	DialogSelected lipgloss.Style
+
+	// Diff 样式
+	DiffAdd    lipgloss.Style // 新增内容（绿色）
+	DiffRemove lipgloss.Style // 删除内容（红色）
+}
+
+// DefaultStyles 返回默认样式配置（使用 Tokyo Night 主题）
+func DefaultStyles() *Styles {
+	s := &Styles{}
+
+	// 定义颜色变量（Tokyo Night 配色方案）
+	var (
+		colorBackground = lipgloss.Color("#1a1b26") // 深色背景
+		colorForeground = lipgloss.Color("#c0caf5") // 主要文字
+		colorPrimary    = lipgloss.Color("#7aa2f7") // 蓝色（主色调）
+		colorSuccess    = lipgloss.Color("#9ece6a") // 绿色（成功）
+		colorWarning    = lipgloss.Color("#e0af68") // 橙色（警告）
+		colorError      = lipgloss.Color("#f7768e") // 红色（错误）
+		colorMuted      = lipgloss.Color("#565f89") // 灰色（次要文字）
+		colorBorder     = lipgloss.Color("#414868") // 边框色
+	)
+
+	// 应用样式
+	s.App = lipgloss.NewStyle().
+		Foreground(colorForeground).
+		Background(colorBackground).
+		Padding(0, 0)
+
+	s.StatusBar = lipgloss.NewStyle().
+		Foreground(colorPrimary).
+		Background(colorBorder).
+		Padding(0, 1).
+		Width(0)
+
+	s.Message = lipgloss.NewStyle().
+		Foreground(colorForeground).
+		Padding(0, 1).
+		MarginBottom(1)
+
+	s.Stream = lipgloss.NewStyle().
+		Foreground(colorForeground).
+		Padding(0, 1)
+
+	s.ToolCall = lipgloss.NewStyle().
+		Foreground(colorWarning).
+		Padding(0, 1).
+		MarginBottom(1)
+
+	s.Error = lipgloss.NewStyle().
+		Foreground(colorError).
+		Padding(0, 1).
+		MarginBottom(1)
+
+	s.Success = lipgloss.NewStyle().
+		Foreground(colorSuccess).
+		Padding(0, 1).
+		MarginBottom(1)
+
+	// 对话框样式
+	s.Dialog = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 2).
+		Width(80)
+
+	s.DialogTitle = lipgloss.NewStyle().
+		Foreground(colorPrimary).
+		Bold(true).
+		MarginBottom(1)
+
+	s.DialogContent = lipgloss.NewStyle().
+		Foreground(colorForeground).
+		MarginBottom(1)
+
+	s.DialogOption = lipgloss.NewStyle().
+		Foreground(colorMuted).
+		Padding(0, 2).
+		MarginTop(1)
+
+	s.DialogSelected = lipgloss.NewStyle().
+		Foreground(colorSuccess).
+		Bold(true).
+		Padding(0, 2).
+		MarginTop(1)
+
+	// Diff 样式
+	s.DiffAdd = lipgloss.NewStyle().
+		Foreground(colorSuccess)
+
+	s.DiffRemove = lipgloss.NewStyle().
+		Foreground(colorError)
+
+	return s
+}
+
+// ========== Model 构造函数 ==========
+
+// NewModel 创建新的 Model
+func NewModel() *Model {
+	ti := textinput.New()
+	ti.Placeholder = "输入消息..."
+	ti.Focus()
+	ti.CharLimit = 500
+	ti.Width = 50
+
+	// 创建 Markdown 渲染器（使用默认宽度，窗口大小变化时会更新）
+	markdownRenderer, _ := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(80), // 默认宽度，稍后根据窗口大小调整
+	)
+
+	// 创建 spinner
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("7aa2f7")) // Tokyo Night 蓝色
+
+	// 【新增】初始化动画状态
+	animStatus := AnimatedStatus{
+		state:       StatusIdle,
+		message:     "准备就绪",
+		showDetails: false,
+		payload:     make(map[string]string),
+		spinner:     sp,
+	}
+
+	return &Model{
+		messages:          make([]string, 0),
+		status:            "准备就绪",
+		markdownRenderer:  markdownRenderer,
+		thinkingSpinner:   sp,
+		textInput:         ti,
+		inputActive:       true, // 默认激活输入状态
+		confirmChoice:     0,
+		diffConfirmChoice: 0,
+		styles:            DefaultStyles(),
+		animatedStatus:    animStatus, // 【新增】
+	}
+}
+
+// SetInputCallback 设置输入回调函数
+func (m *Model) SetInputCallback(callback func(string)) {
+	m.inputCallback = callback
+}
+
+// ========== Bubble Tea 接口实现 ==========
+
+// Init 实现 tea.Model 接口 - 初始化
+func (m *Model) Init() tea.Cmd {
+	// 启动两个定时器：一个用于 UI 刷新，一个用于 Spinner 动画
+	return tea.Batch(
+		tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+			return TickMsg(t)
+		}),
+		tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+			return SpinnerTickMsg(t)
+		}),
+	)
+}
+
+// Update 实现 tea.Model 接口 - 处理消息更新
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		// 键盘输入
+		return m.handleKeyMsg(msg)
+
+	case tea.WindowSizeMsg:
+		// 窗口尺寸变化
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case StreamMsg:
+		// 流式内容追加
+		m.currentStream.WriteString(string(msg))
+		return m, nil
+
+	case MarkdownMsg:
+		// Markdown 内容：渲染后显示
+		rendered, err := m.renderMarkdown(string(msg))
+		if err != nil {
+			// 如果渲染失败，直接显示原始内容
+			m.messages = append(m.messages, string(msg))
+		} else {
+			m.messages = append(m.messages, rendered)
+		}
+		m.scrollToBottom()
+		return m, nil
+
+	case StatusMsg:
+		// 状态更新
+		m.status = string(msg)
+		return m, nil
+
+	case ThinkingStartMsg:
+		// 开始思考状态
+		m.thinking = true
+		return m, nil
+
+	case ThinkingStopMsg:
+		// 停止思考状态
+		m.thinking = false
+		return m, nil
+
+	case ConfirmMsg:
+		// 显示确认对话框
+		m.confirming = true
+		m.confirmAction = msg.Action
+		m.confirmArgs = msg.Args
+		m.confirmReply = msg.Reply
+		m.confirmChoice = 0 // 默认选择"是"
+		return m, nil
+
+	case DiffConfirmMsg:
+		// 显示 Diff 确认对话框
+		m.diffConfirming = true
+		m.diffConfirmPath = msg.Path
+		m.diffConfirmText = msg.DiffText
+		m.diffConfirmReply = msg.Reply
+		m.diffConfirmChoice = 0
+		return m, nil
+
+	case TickMsg:
+		// 定时刷新：如果有流式内容，刷新到消息列表
+		if m.currentStream.Len() > 0 {
+			content := m.currentStream.String()
+			m.messages = append(m.messages, content)
+			m.currentStream.Reset()
+			// 自动滚动到底部
+			m.scrollToBottom()
+		}
+		return m, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+			return TickMsg(t)
+		})
+
+	case SpinnerTickMsg:
+		// Spinner 动画更新
+		var cmd tea.Cmd
+		m.thinkingSpinner, cmd = m.thinkingSpinner.Update(msg)
+		// 返回 spinner 的 tick 命令
+		return m, tea.Batch(
+			cmd,
+			tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+				return SpinnerTickMsg(t)
+			}),
+		)
+	}
+
+	return m, nil
+}
+
+// View 实现 tea.Model 接口 - 渲染视图
+func (m *Model) View() string {
+	// 如果在确认对话框模式，显示确认对话框
+	if m.confirming {
+		return m.viewConfirmDialog()
+	}
+
+	// 如果在 Diff 确认对话框模式，显示 Diff 对话框
+	if m.diffConfirming {
+		return m.viewDiffConfirmDialog()
+	}
+
+	// 正常模式：显示消息列表 + 输入框 + 状态栏
+	var b strings.Builder
+
+	// 消息区域
+	msgHeight := m.height - 5 // 留出输入框、状态栏和帮助提示的空间
+	messages := m.getVisibleMessages(msgHeight)
+
+	for _, msg := range messages {
+		b.WriteString(msg)
+	}
+
+	// 输入框区域
+	b.WriteString("\n")
+	if m.inputActive {
+		b.WriteString(m.styles.Message.Render(">> " + m.textInput.View()))
+	} else {
+		b.WriteString(m.styles.Message.Render(">> (按 ESC 激活输入)"))
+	}
+
+	// 状态栏
+	b.WriteString("\n")
+	statusText := m.status
+	if m.thinking {
+		// 思考状态：添加 spinner
+		statusText = fmt.Sprintf("%s %s", m.thinkingSpinner.View(), m.status)
+	}
+	statusBar := m.styles.StatusBar.
+		Width(m.width).
+		Render(statusText)
+	b.WriteString(statusBar)
+
+	// 帮助提示
+	help := " [Ctrl+↑/↓:滚动] [ESC:切换输入] [Enter:发送] [Ctrl+C:退出] "
+	b.WriteString(m.styles.App.Render(help))
+
+	return b.String()
+}
+
+// ========== 消息处理方法 ==========
+
+// handleKeyMsg 处理键盘输入
+func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// 如果在确认对话框模式
+	if m.confirming {
+		return m.handleConfirmKeyMsg(msg)
+	}
+
+	// 如果在 Diff 确认对话框模式
+	if m.diffConfirming {
+		return m.handleDiffConfirmKeyMsg(msg)
+	}
+
+	// 普通模式下的按键处理
+	switch msg.String() {
+	case "ctrl+c", "q":
+		// 退出程序
+		return m, tea.Quit
+
+	case "enter":
+		// 提交输入（如果输入框激活）
+		if m.inputActive {
+			input := m.textInput.Value()
+			if strings.TrimSpace(input) != "" && m.inputCallback != nil {
+				// 调用回调函数发送用户输入
+				m.inputCallback(input)
+				m.textInput.Reset()
+			}
+		}
+		return m, nil
+
+	case "ctrl+up", "ctrl+k":
+		// 向上滚动
+		m.scrollUp()
+		return m, nil
+
+	case "ctrl+down", "ctrl+j":
+		// 向下滚动
+		m.scrollDown()
+		return m, nil
+
+	case "esc":
+		// 切换输入焦点
+		if m.inputActive {
+			m.inputActive = false
+			m.textInput.Blur()
+		} else {
+			m.inputActive = true
+			m.textInput.Focus()
+		}
+		return m, nil
+	}
+
+	// 如果输入框激活，让 textinput 处理按键
+	if m.inputActive {
+		var cmd tea.Cmd
+		m.textInput, cmd = m.textInput.Update(msg)
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+// handleConfirmKeyMsg 处理确认对话框的按键
+func (m *Model) handleConfirmKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "left", "h":
+		// 选择"是"
+		m.confirmChoice = 0
+		return m, nil
+
+	case "right", "l":
+		// 选择"否"
+		m.confirmChoice = 1
+		return m, nil
+
+	case "enter", " ":
+		// 确认选择
+		if m.confirmReply != nil {
+			m.confirmReply <- m.confirmChoice == 0
+		}
+		m.confirming = false
+		m.confirmReply = nil
+		return m, nil
+
+	case "ctrl+c", "q", "esc":
+		// 取消（视为拒绝）
+		if m.confirmReply != nil {
+			m.confirmReply <- false
+		}
+		m.confirming = false
+		m.confirmReply = nil
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// handleDiffConfirmKeyMsg 处理 Diff 确认对话框的按键
+func (m *Model) handleDiffConfirmKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "left", "h":
+		// 选择"确认修改"
+		m.diffConfirmChoice = 0
+		return m, nil
+
+	case "right", "l":
+		// 选择"取消"
+		m.diffConfirmChoice = 1
+		return m, nil
+
+	case "enter", " ":
+		// 确认选择
+		if m.diffConfirmReply != nil {
+			m.diffConfirmReply <- m.diffConfirmChoice == 0
+		}
+		m.diffConfirming = false
+		m.diffConfirmReply = nil
+		return m, nil
+
+	case "ctrl+c", "q", "esc":
+		// 取消（视为拒绝）
+		if m.diffConfirmReply != nil {
+			m.diffConfirmReply <- false
+		}
+		m.diffConfirming = false
+		m.diffConfirmReply = nil
+		return m, nil
+
+	case "up", "k":
+		// 向上滚动 Diff 内容
+		m.scrollUp()
+		return m, nil
+
+	case "down", "j":
+		// 向下滚动 Diff 内容
+		m.scrollDown()
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// ========== 视图渲染方法 ==========
+
+// viewConfirmDialog 渲染确认对话框
+func (m *Model) viewConfirmDialog() string {
+	title := "⚠️  确认操作"
+	content := fmt.Sprintf("工具: %s\n参数: %s", m.confirmAction, m.confirmArgs)
+
+	yesStyle := m.styles.DialogOption
+	noStyle := m.styles.DialogOption
+
+	if m.confirmChoice == 0 {
+		yesStyle = m.styles.DialogSelected // 选中"是"
+	} else {
+		noStyle = m.styles.DialogSelected // 选中"否"
+	}
+
+	dialog := m.styles.Dialog.Render(
+		lipgloss.JoinVertical(lipgloss.Left,
+			m.styles.DialogTitle.Render(title),
+			"",
+			m.styles.DialogContent.Render(content),
+			"",
+			lipgloss.JoinHorizontal(lipgloss.Left,
+				yesStyle.Render("› 是 (Y)"),
+				noStyle.Render("› 否 (N)"),
+			),
+		),
+	)
+
+	// 居中显示
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		dialog,
+	)
+}
+
+// viewDiffConfirmDialog 渲染 Diff 确认对话框
+func (m *Model) viewDiffConfirmDialog() string {
+	title := "📝 确认文件修改"
+	pathInfo := fmt.Sprintf("文件: %s", m.diffConfirmPath)
+
+	// 简化的 Diff 显示（仅显示前 20 行）
+	diffLines := strings.Split(m.diffConfirmText, "\n")
+	if len(diffLines) > 20 {
+		diffLines = append(diffLines[:20], "... (更多内容未显示)")
+	}
+	diffContent := strings.Join(diffLines, "\n")
+
+	yesStyle := m.styles.DialogOption
+	noStyle := m.styles.DialogOption
+
+	if m.diffConfirmChoice == 0 {
+		yesStyle = m.styles.DialogSelected // 选中"确认修改"
+	} else {
+		noStyle = m.styles.DialogSelected // 选中"取消"
+	}
+
+	dialog := m.styles.Dialog.Render(
+		lipgloss.JoinVertical(lipgloss.Left,
+			m.styles.DialogTitle.Render(title),
+			"",
+			m.styles.DialogContent.Render(pathInfo),
+			"",
+			m.styles.DialogContent.Render(diffContent),
+			"",
+			lipgloss.JoinHorizontal(lipgloss.Left,
+				yesStyle.Render("› 确认修改 (Y)"),
+				noStyle.Render("› 取消 (N)"),
+			),
+		),
+	)
+
+	// 居中显示
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		dialog,
+	)
+}
+
+// getVisibleMessages 获取可见的消息（用于滚动）
+func (m *Model) getVisibleMessages(maxHeight int) []string {
+	if len(m.messages) == 0 {
+		return []string{"\n\n等待输入...\n"}
+	}
+
+	// 显示所有消息（简化版本，后续可以添加精确的行数计算和滚动）
+	result := make([]string, 0, len(m.messages))
+	for _, msg := range m.messages {
+		result = append(result, m.styles.Message.Render(msg))
+	}
+
+	return result
+}
+
+// ========== 滚动控制方法 ==========
+
+// scrollUp 向上滚动一行
+func (m *Model) scrollUp() {
+	if m.scrollOffset > 0 {
+		m.scrollOffset--
+	}
+}
+
+// scrollDown 向下滚动一行
+func (m *Model) scrollDown() {
+	m.scrollOffset++
+}
+
+// scrollToTop 跳转到顶部
+func (m *Model) scrollToTop() {
+	m.scrollOffset = 0
+}
+
+// scrollToBottom 跳转到底部
+func (m *Model) scrollToBottom() {
+	m.scrollOffset = len(m.messages)
+}
+
+// ========== 辅助方法 ==========
+
+// spinnerForState 根据状态返回对应的 spinner 类型
+func spinnerForState(state StatusState) spinner.Spinner {
+	switch state {
+	case StatusThinking:
+		return spinner.Dot
+	case StatusReading:
+		return spinner.Points
+	case StatusSearching:
+		return spinner.Line
+	case StatusExecuting:
+		return spinner.Jump
+	case StatusStreaming:
+		return spinner.MiniDot
+	default:
+		return spinner.Dot
+	}
+}
+
+// colorForState 根据 Tokyo Night 主题返回状态对应的颜色
+func colorForState(state StatusState) lipgloss.Color {
+	colors := map[StatusState]lipgloss.Color{
+		StatusIdle:      "#565f89", // 灰色（待机）
+		StatusThinking:  "#7aa2f7", // 蓝色（思考）
+		StatusReading:   "#2ac3de", // 青色（读取）
+		StatusSearching: "#bb9af7", // 紫色（搜索）
+		StatusExecuting: "#e0af68", // 橙色（执行）
+		StatusStreaming: "#73daca", // 绿青色（流式）
+		StatusSuccess:   "#9ece6a", // 绿色（成功）
+		StatusError:     "#f7768e", // 红色（错误）
+	}
+
+	if c, ok := colors[state]; ok {
+		return c
+	}
+	return "#565f89" // 默认灰色
+}
+
+// renderMarkdown 渲染 Markdown 内容
+func (m *Model) renderMarkdown(markdown string) (string, error) {
+	if m.markdownRenderer == nil {
+		// 如果渲染器未初始化，返回原始内容
+		return markdown, nil
+	}
+
+	// 使用 glamour 渲染 Markdown
+	rendered, err := m.markdownRenderer.Render(markdown)
+	if err != nil {
+		return "", err
+	}
+
+	return rendered, nil
+}
