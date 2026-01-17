@@ -1,72 +1,108 @@
 # Kore
 
-**Kore** is an AI-powered workflow automation platform built with Go, serving as the core中枢 for all development tasks. Inspired by Claude Code and aligned with agent platforms like Dify, Kore provides intelligent code understanding, modification, and automation capabilities through natural language interaction.
+**Kore** 是一个用 Go 语言构建的 AI 驱动的工作流自动化平台，作为所有开发任务的核心中枢。受 Claude Code 启发，并与 Dify 等 Agent 平台对齐，Kore 通过自然语言交互提供智能代码理解、修改和自动化能力。
 
-## Features
+---
 
-- 🤖 **AI-Powered**: Integrates with OpenAI API and Ollama for intelligent code assistance
-- 🎨 **Hybrid Interface**: CLI, TUI (Terminal UI), and GUI support
-- 🔧 **Tool Execution**: Safe file operations and command execution with confirmation
-- 📁 **Context Management**: Smart project context loading with dynamic file browsing
-- 🛡️ **Security Sandbox**: Built-in security layers to prevent malicious operations
-- 🚀 **Extensible**: Plugin-based tool system for custom workflows
+## ✨ 核心特性
 
-## Installation
+- 🤖 **AI 驱动**: 集成 OpenAI API 和 Ollama，提供智能代码辅助
+- 🎨 **混合界面**: 支持 CLI、TUI（终端界面）和 GUI（计划中）
+- 🔧 **工具执行**: 安全的文件操作和命令执行，带确认机制
+- 📁 **上下文管理**: 智能项目上下文加载，动态文件浏览
+- 🛡️ **安全沙箱**: 内置安全层，防止恶意操作
+- 🚀 **可扩展**: 基于插件的工具系统，支持自定义工作流
+- ⚡ **并行工具调用**: 支持多工具并行执行，提升效率
+- 📊 **实时状态指示**: TUI 界面提供动画状态反馈
 
-### From Source
+---
+
+## 📦 安装
+
+### 从源码安装
 
 ```bash
 go install github.com/yourusername/kore/cmd/kore@latest
 ```
 
-### Build from Source
+### 从源码构建
 
 ```bash
+# 克隆仓库
 git clone https://github.com/yourusername/kore.git
 cd kore
+
+# 构建可执行文件
+go build -o bin/kore ./cmd/kore
+
+# 或使用 Makefile（如果有）
 make build
 ```
 
-## Quick Start
+---
+
+## 🚀 快速开始
 
 ```bash
-# Initialize Kore in your project
+# 在你的项目中启动 Kore
 cd /path/to/your/project
-kore init
-
-# Start interactive chat
 kore chat
 
-# Ask a single question
-kore ask "Explain how the authentication system works"
+# 查看版本信息
+kore version
 
-# Focus on specific files
-kore chat -f main.go -f auth.go
-
-# Run a command with AI assistance
-kore do "Run tests and fix any failures"
+# 查看帮助
+kore --help
 ```
 
-## Configuration
+### 交互模式
 
-Kore looks for configuration in `~/.config/kore/config.yaml`:
+```bash
+# 启动 CLI 交互模式
+kore chat --ui cli
+
+# 启动 TUI 交互模式（推荐）
+kore chat --ui tui
+```
+
+### TUI 快捷键
+
+- `Ctrl+C`: 退出程序
+- `Ctrl+D`: 切换状态栏详情显示
+- `Ctrl+↑/↓`: 滚动消息历史
+- `Tab`: 切换输入焦点
+- `Enter`: 发送消息
+
+---
+
+## ⚙️ 配置
+
+Kore 在 `~/.config/kore/config.yaml` 查找配置文件：
 
 ```yaml
+# LLM 配置
 llm:
-  provider: "openai"  # or "ollama"
+  provider: "openai"  # 支持: openai, ollama
   model: "gpt-4"
   api_key: "your-api-key"
   base_url: "https://api.openai.com/v1"
   temperature: 0.7
+  max_tokens: 4096
 
+# UI 配置
+ui:
+  mode: "tui"  # cli, tui, gui (计划中)
+
+# 上下文管理
 context:
   max_tokens: 16000
   max_tree_depth: 5
   max_files_per_dir: 50
 
+# 安全配置
 security:
   blocked_cmds:
-    - "rm"
+    - "rm -rf"
     - "sudo"
     - "shutdown"
   blocked_paths:
@@ -75,110 +111,205 @@ security:
     - "node_modules/.cache"
 ```
 
-## Development
+---
 
-See [CONTRIBUTING.md](docs/DEV_GUIDE.md) for detailed development guidelines.
-
-### Setup Development Environment
-
-```bash
-# Install development tools
-make install-tools
-
-# Run tests
-make test
-
-# Run linter
-make lint
-
-# Build
-make build
-```
-
-### Project Structure
+## 🏗️ 项目结构
 
 ```
-kore/
-├── cmd/                    # Entry point
-├── internal/               # Private business logic
-│   ├── core/              # Core domain models
-│   ├── adapters/          # Port adapters
-│   ├── tools/             # Tool execution
-│   └── infrastructure/    # Infrastructure services
-├── pkg/                   # Public libraries
-├── api/prompts/           # System prompts
-├── docs/                  # Documentation
-└── tests/                 # Tests
+kore-foundation/
+├── cmd/                        # 应用程序入口
+│   └── kore/
+│       └── main.go            # 主函数和 CLI 命令
+│
+├── internal/                   # 内部包（不对外暴露）
+│   ├── adapters/              # 适配器层
+│   │   ├── cli/              # CLI 适配器
+│   │   ├── tui/              # TUI 适配器（Bubble Tea）
+│   │   ├── openai/           # OpenAI Provider
+│   │   └── ollama/           # Ollama Provider
+│   │
+│   ├── core/                  # 核心领域模型
+│   │   ├── agent.go          # Agent 实现（ReAct Loop）
+│   │   ├── context.go        # 上下文管理
+│   │   ├── history.go        # 对话历史
+│   │   └── llm.go            # LLM 抽象接口
+│   │
+│   ├── tools/                 # 工具层
+│   │   ├── executor.go       # 工具执行器
+│   │   ├── security.go       # 安全拦截器
+│   │   ├── list_files.go     # 文件列表工具
+│   │   └── search_files.go   # 文件搜索工具
+│   │
+│   └── infrastructure/        # 基础设施层
+│       ├── config/           # 配置管理
+│       └── fs/               # 文件系统工具
+│
+├── pkg/                       # 公共库（可被外部使用）
+│   ├── logger/               # 日志工具
+│   └── utils/                # 通用工具
+│
+├── api/                       # API 资源
+│   └── prompts/              # 系统提示词
+│       └── system.txt        # Agent 系统提示
+│
+├── docs/                      # 文档
+│   ├── ARCHITECTURE.md       # 架构文档
+│   ├── TESTING_GUIDE.md      # 测试指南
+│   └── plans/                # 设计计划
+│
+└── configs/                   # 配置文件模板
+    └── default.yaml
 ```
-
-## Architecture
-
-Kore follows an **Agent-centric architecture** with **interface-based decoupling**:
-
-- **Agent**: Core reasoning engine managing the ReAct loop
-- **ContextManager**: Smart project context loading
-- **LLMProvider**: Unified interface for multiple LLM backends
-- **ToolExecutor**: Safe tool execution with security sandbox
-
-See [docs/plans/2026-01-16-kore-design.md](docs/plans/2026-01-16-kore-design.md) for detailed design documentation.
-
-## Testing
-
-```bash
-# Run all tests
-make test
-
-# Run with coverage
-make test-coverage
-
-# Run integration tests
-make test-integration
-
-# Run AI evaluation tests
-make test-evals
-```
-
-## Roadmap
-
-### Phase 1: MVP Core (Current)
-- [x] Project structure and engineering standards
-- [ ] Agent core with ReAct loop
-- [ ] OpenAI integration
-- [ ] Context management
-- [ ] Basic tool execution (read_file, write_file, run_command)
-- [ ] CLI and TUI implementation
-
-### Phase 2: Advanced Features
-- [ ] Ollama integration
-- [ ] Advanced tools (search, list_files)
-- [ ] Parallel tool calling
-- [ ] Conversation history persistence
-
-### Phase 3: GUI
-- [ ] Wails integration
-- [ ] React frontend
-- [ ] Monaco Editor integration
-- [ ] Terminal emulator (xterm.js)
-
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](docs/DEV_GUIDE.md) for guidelines.
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Acknowledgments
-
-- Inspired by [Claude Code](https://claude.ai/code)
-- Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea)
-- LLM integration via [go-openai](https://github.com/sashabaranov/go-openai)
-
-## Contact
-
-- GitHub Issues: [github.com/yourusername/kore/issues](https://github.com/yourusername/kore/issues)
-- Documentation: [docs/](docs/)
 
 ---
 
-**Note**: Kore is currently in active development. The API and features may change before v1.0 release.
+## 🎯 核心架构
+
+Kore 采用 **Agent-Centric（代理中心）** 架构，通过 UI 抽象层实现多种交互模式的统一接入。
+
+### 架构层次
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        用户交互层                             │
+│   CLI Adapter   │   TUI Adapter   │   GUI Adapter (未来)    │
+└────────────┬──────────────┬──────────────┬─────────────────────┘
+             │              │              │
+             └──────────────┼──────────────┘
+                            ▼
+                  ┌─────────────────────┐
+                  │    Agent Core       │
+                  │  - ReAct Loop       │
+                  │  - Context Manager  │
+                  │  - Tool Executor    │
+                  └─────────┬───────────┘
+                            │
+         ┌──────────────────┼──────────────────┐
+         ▼                  ▼                  ▼
+   ┌─────────┐      ┌──────────┐      ┌──────────┐
+   │ LLM     │      │ Tools    │      │ History  │
+   │Provider │      │ Executor │      │          │
+   └─────────┘      └──────────┘      └──────────┘
+```
+
+### 核心组件
+
+- **Agent**: AI 代理，实现 ReAct（推理+行动）循环
+- **ContextManager**: 智能上下文管理，分层加载项目文件
+- **LLMProvider**: 统一的 LLM 接口，支持多种提供商
+- **ToolExecutor**: 安全的工具执行沙箱
+- **UIInterface**: UI 抽象接口，解耦界面实现
+
+详细的架构文档请参考：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+---
+
+## 🔄 开发路线图
+
+### ✅ Phase 1: MVP 核心（已完成）
+
+- [x] 项目结构和工程标准
+- [x] Agent 核心（ReAct Loop）
+- [x] OpenAI 集成
+- [x] Ollama 集成
+- [x] 上下文管理系统
+- [x] 基础工具执行（list_files, search_files）
+- [x] CLI 和 TUI 实现
+- [x] 安全沙箱机制
+- [x] 并行工具调用优化
+- [x] TUI 动画状态指示器
+
+### 🚧 Phase 2: 高级特性（进行中）
+
+- [ ] 增强工具系统（read_file, write_file, run_command）
+- [ ] 对话历史持久化
+- [ ] 多文件编辑支持
+- [ ] 项目索引优化
+- [ ] 性能监控和分析
+- [ ] 更完善的测试覆盖
+
+### 📋 Phase 3: 用户增强（计划中）
+
+- [ ] 配置文件热重载
+- [ ] 自定义工具注册
+- [ ] 插件系统
+- [ ] 多会话管理
+- [ ] 工作流模板
+- [ ] 命令别名系统
+
+### 🎨 Phase 4: GUI 界面（计划中）
+
+- [ ] Wails 框架集成
+- [ ] React 前端
+- [ ] Monaco Editor 集成
+- [ ] 终端模拟器（xterm.js）
+- [ ] 跨平台支持
+
+---
+
+## 🧪 测试
+
+```bash
+# 运行所有测试
+go test ./...
+
+# 运行测试并显示覆盖率
+go test -cover ./...
+
+# 运行特定包的测试
+go test ./internal/core/...
+
+# 查看详细测试输出
+go test -v ./...
+```
+
+详细的测试指南请参考：[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)
+
+---
+
+## 🤝 贡献
+
+我们欢迎各种形式的贡献！
+
+### 开发规范
+
+1. 遵循 Go 代码规范
+2. 编写单元测试
+3. 更新相关文档
+4. 提交前运行 `go mod tidy`
+5. 确保所有测试通过
+
+### 提交流程
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'feat: add some amazing feature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+---
+
+## 📄 许可证
+
+MIT License - 详见 LICENSE 文件
+
+---
+
+## 🙏 致谢
+
+- 灵感来源：[Claude Code](https://claude.ai/code)
+- 构建工具：[Bubble Tea](https://github.com/charmbracelet/bubbletea)
+- LLM 集成：[go-openai](https://github.com/sashabaranov/go-openai)
+- CLI 框架：[Cobra](https://github.com/spf13/cobra)
+
+---
+
+## 📞 联系方式
+
+- **GitHub Issues**: [github.com/yourusername/kore/issues](https://github.com/yourusername/kore/issues)
+- **文档**: [docs/](docs/)
+- **架构文档**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+---
+
+**注意**: Kore 目前处于活跃开发阶段。在 v1.0 版本发布之前，API 和功能可能会有变化。
