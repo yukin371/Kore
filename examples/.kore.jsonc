@@ -1,0 +1,70 @@
+{
+  // LLM 提供商配置
+  "llm": {
+    // 提供商类型: "openai" 或 "ollama"
+    "provider": "openai",
+
+    // 模型名称
+    // OpenAI: gpt-4, gpt-3.5-turbo, 等
+    // Ollama: llama2, mistral, 等
+    "model": "gpt-4",
+
+    // API 密钥（可选，也可以通过环境变量 KORE_LLM_API_KEY 设置）
+    "api_key": "",
+
+    // 自定义 API 基础 URL（可选）
+    // 用于代理或兼容 API
+    "base_url": "",
+
+    // 生成温度（0.0 - 2.0）
+    // 较低的值使输出更确定，较高的值更随机
+    "temperature": 0.7,
+
+    // 响应的最大令牌数
+    "max_tokens": 4000
+  },
+
+  // 上下文管理配置
+  "context": {
+    // 上下文的令牌预算
+    "max_tokens": 8000,
+
+    // 目录树深度限制
+    "max_tree_depth": 5,
+
+    // 每个目录的文件数限制
+    "max_files_per_dir": 50
+  },
+
+  // 安全设置
+  "security": {
+    // 阻止的 Shell 命令
+    "blocked_cmds": [
+      "rm",
+      "sudo",
+      "shutdown",
+      "format",
+      "del",
+      "mkfs",
+      "dd",
+      "reboot",
+      "poweroff"
+    ],
+
+    // 阻止的文件路径（支持通配符）
+    "blocked_paths": [
+      ".git",
+      ".env",
+      "node_modules/.cache"
+    ]
+  },
+
+  // UI 偏好设置
+  "ui": {
+    // UI 模式: "cli", "tui", 或 "gui"
+    "mode": "cli",
+
+    // 启用流式输出
+    "stream_output": true
+  }
+}

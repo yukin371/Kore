@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yukin/kore/schemas/config.schema.json",
+  "title": "Kore Configuration Schema",
+  "description": "Configuration schema for Kore AI agent",
+  "type": "object",
+  "required": ["llm"],
+  "properties": {
+    "llm": {
+      "type": "object",
+      "description": "LLM provider configuration",
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "LLM provider name",
+          "enum": ["openai", "ollama"]
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name (e.g., gpt-4, llama2)"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for authentication"
+        },
+        "base_url": {
+          "type": "string",
+          "description": "Custom base URL for API (useful for proxies)"
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Temperature for generation (0.0 - 2.0)",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 0.7
+        },
+        "max_tokens": {
+          "type": "integer",
+          "description": "Maximum tokens in response",
+          "minimum": 1,
+          "default": 4000
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "Context management configuration",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "description": "Token budget for context",
+          "minimum": 100,
+          "default": 8000
+        },
+        "max_tree_depth": {
+          "type": "integer",
+          "description": "Directory tree depth limit",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 5
+        },
+        "max_files_per_dir": {
+          "type": "integer",
+          "description": "Files per directory limit",
+          "minimum": 1,
+          "default": 50
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "description": "Security settings",
+      "properties": {
+        "blocked_cmds": {
+          "type": "array",
+          "description": "Blocked shell commands",
+          "items": {
+            "type": "string"
+          },
+          "default": ["rm", "sudo", "shutdown", "format", "del", "mkfs", "dd", "reboot", "poweroff"]
+        },
+        "blocked_paths": {
+          "type": "array",
+          "description": "Blocked file paths",
+          "items": {
+            "type": "string"
+          },
+          "default": [".git", ".env", "node_modules/.cache"]
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "description": "UI preferences",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "UI mode",
+          "enum": ["cli", "tui", "gui"],
+          "default": "cli"
+        },
+        "stream_output": {
+          "type": "boolean",
+          "description": "Enable streaming output",
+          "default": true
+        }
+      }
+    }
+  }
+}

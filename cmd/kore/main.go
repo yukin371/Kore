@@ -19,6 +19,7 @@ import (
 	"github.com/yukin/kore/internal/adapters/tui"
 	"github.com/yukin/kore/internal/core"
 	"github.com/yukin/kore/internal/infrastructure/config"
+	koreconfig "github.com/yukin/kore/internal/config"
 	"github.com/yukin/kore/internal/tools"
 	"github.com/yukin/kore/pkg/logger"
 	"github.com/yukin/kore/pkg/utils"
@@ -81,15 +82,33 @@ func initConfig() {
 		logger.SetLevel(logger.DEBUG)
 	}
 
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		logger.Warn("Failed to load config: %v. Using defaults.", err)
-		cfg = config.DefaultConfig()
+	// Try new JSONC configuration loader first
+	var cfg *koreconfig.Config
+	var err error
+
+	// Check if JSONC config exists
+	if _, statErr := os.Stat(".kore.jsonc"); statErr == nil {
+		// Use new JSONC loader
+		loader := koreconfig.NewLoader()
+		cfg, err = loader.Load()
+		if err != nil {
+			logger.Warn("Failed to load JSONC config: %v. Trying legacy config.", err)
+		} else {
+			logger.Info("JSONC configuration loaded successfully")
+			logger.Debug("LLM Provider: %s, Model: %s", cfg.LLM.Provider, cfg.LLM.Model)
+			return
+		}
 	}
 
-	logger.Info("Configuration loaded successfully")
-	logger.Debug("LLM Provider: %s, Model: %s", cfg.LLM.Provider, cfg.LLM.Model)
+	// Fallback to legacy configuration
+	legacyCfg, legacyErr := config.Load()
+	if legacyErr != nil {
+		logger.Warn("Failed to load legacy config: %v. Using defaults.", legacyErr)
+		legacyCfg = config.DefaultConfig()
+	}
+
+	logger.Info("Legacy configuration loaded successfully")
+	logger.Debug("LLM Provider: %s, Model: %s", legacyCfg.LLM.Provider, legacyCfg.LLM.Model)
 }
 
 func runChat(cmd *cobra.Command, args []string) error {
@@ -98,10 +117,25 @@ func runChat(cmd *cobra.Command, args []string) error {
 		message = strings.Join(args, " ")
 	}
 
-	// 加载配置
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("加载配置失败: %w", err)
+	// 加载配置 - 优先使用 JSONC 配置
+	var cfg *koreconfig.Config
+	var err error
+
+	if _, statErr := os.Stat(".kore.jsonc"); statErr == nil {
+		// Use new JSONC loader
+		loader := koreconfig.NewLoader()
+		cfg, err = loader.Load()
+		if err != nil {
+			return fmt.Errorf("加载 JSONC 配置失败: %w", err)
+		}
+	} else {
+		// Use legacy config
+		legacyCfg, legacyErr := config.Load()
+		if legacyErr != nil {
+			return fmt.Errorf("加载配置失败: %w", legacyErr)
+		}
+		// Convert legacy config to new config format
+		cfg = convertLegacyConfig(legacyCfg)
 	}
 
 	// 确定 UI 模式
@@ -247,5 +281,32 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// convertLegacyConfig converts legacy config to new config format
+func convertLegacyConfig(legacy *config.Config) *koreconfig.Config {
+	return &koreconfig.Config{
+		LLM: koreconfig.LLMConfig{
+			Provider:    legacy.LLM.Provider,
+			Model:       legacy.LLM.Model,
+			APIKey:      legacy.LLM.APIKey,
+			BaseURL:     legacy.LLM.BaseURL,
+			Temperature: legacy.LLM.Temperature,
+			MaxTokens:   legacy.LLM.MaxTokens,
+		},
+		Context: koreconfig.ContextConfig{
+			MaxTokens:      legacy.Context.MaxTokens,
+			MaxTreeDepth:   legacy.Context.MaxTreeDepth,
+			MaxFilesPerDir: legacy.Context.MaxFilesPerDir,
+		},
+		Security: koreconfig.SecurityConfig{
+			BlockedCmds:  legacy.Security.BlockedCmds,
+			BlockedPaths: legacy.Security.BlockedPaths,
+		},
+		UI: koreconfig.UIConfig{
+			Mode:         legacy.UI.Mode,
+			StreamOutput: legacy.UI.StreamOutput,
+		},
 	}
 }

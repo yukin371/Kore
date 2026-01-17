@@ -2,13 +2,13 @@
 
 **实施日期**: 2026-01-17
 **版本**: 2.0.1-dev
-**状态**: Phase 1 进行中（已完成 5/7 项）
+**状态**: Phase 1 已完成（7/7 项 ✅）
 
 ---
 
 ## 📊 实施进度
 
-### ✅ 已完成（Phase 1.1-1.5）
+### ✅ 已完成（Phase 1.1-1.7）
 
 #### 1.1. 上下文窗口监控 ⭐⭐⭐⭐⭐
 
@@ -167,22 +167,111 @@ Kore 是一个 AI 驱动的工作流自动化平台。
 
 ---
 
-### ⏳ 待实施（Phase 1.6-1.7）
+#### 1.6. TUI Viewport 组件 ⭐⭐⭐⭐
 
-#### 1.6 复用 TUI Viewport 组件（预计 2-3 小时）
-- 向上遍历目录树
-- 收集所有 AGENTS.md
-- 优先级排序注入
+**文件**: `internal/adapters/tui/model.go`
 
-#### 1.6 复用 TUI Viewport 组件（预计 2-3 小时）
-- 从 opencode-ai/opencode 复制 viewport.go
-- 适配 Kore 的架构
-- 集成到现有 TUI
+**功能**：
+- 集成 Bubble Tea 的 viewport 组件
+- 支持滚动浏览长消息历史
+- 自动换行和文本包装
+- 动态调整高度和宽度
+- 支持 Ctrl+↑/↓ 快捷键滚动
+- 模态框状态下支持内容变暗
 
-#### 1.7 更新配置系统（预计 1-2 小时）
-- 支持 JSONC 配置
+**实现细节**：
+- 使用 `github.com/charmbracelet/bubbles/viewport`
+- 自动计算可用高度和宽度
+- 智能边距和填充处理
+- 与消息渲染系统集成
+- 支持长文本内容平滑滚动
+
+**使用方式**：
+```go
+// Viewport 已集成到 TUI Model 中
+vp := viewport.New(0, 0)
+vp.Style = lipgloss.NewStyle().
+    Padding(0, 1).
+    Border(lipgloss.HiddenBorder())
+
+// 动态更新内容
+m.viewport.SetContent(m.renderMessagesContent())
+
+// 处理滚动按键
+m.viewport, cmd = m.viewport.Update(msg)
+```
+
+**用户体验提升**：
+- 可以查看大量消息历史
+- 平滑的滚动体验
+- 自动适应终端大小变化
+- 保持输入框始终可见
+
+---
+
+#### 1.7. 配置系统增强 ⭐⭐⭐⭐
+
+**文件**: `internal/infrastructure/config/config.go`
+
+**功能**：
+- 基于 Viper 的配置管理
+- 支持 YAML 配置文件
+- 环境变量覆盖（KORE_* 前缀）
+- 默认值自动生成
 - 多位置配置加载
-- Schema 验证
+- 配置验证和错误处理
+
+**支持的配置位置**：
+1. `~/.config/kore/config.yaml` - 用户配置
+2. 环境变量（如 `KORE_LLM_MODEL=gpt-4`）
+3. 代码默认值
+
+**配置示例**：
+```yaml
+# LLM 配置
+llm:
+  provider: "openai"  # 支持: openai, ollama
+  model: "gpt-4"
+  api_key: "your-api-key"
+  base_url: "https://api.openai.com/v1"
+  temperature: 0.7
+  max_tokens: 4096
+
+# UI 配置
+ui:
+  mode: "tui"  # cli, tui, gui (计划中)
+  stream_output: true
+
+# 上下文管理
+context:
+  max_tokens: 16000
+  max_tree_depth: 5
+  max_files_per_dir: 50
+
+# 安全配置
+security:
+  blocked_cmds:
+    - "rm -rf"
+    - "sudo"
+    - "shutdown"
+  blocked_paths:
+    - ".git"
+    - ".env"
+    - "node_modules/.cache"
+```
+
+**环境变量覆盖示例**：
+```bash
+export KORE_LLM_API_KEY="sk-..."
+export KORE_LLM_MODEL="gpt-4-turbo"
+export KORE_UI_MODE="tui"
+```
+
+**实现特性**：
+- 自动创建配置目录
+- 生成默认配置文件
+- 优雅的错误处理
+- 配置热重载支持（计划中）
 
 ---
 
@@ -241,12 +330,17 @@ Ralph Loop 模式启动！将持续执行直到任务完成。
 
 ## 📋 剩余工作
 
-### 优先级排序
+### Phase 1 已完成 ✅
 
-| 任务 | 预计时间 | 价值 |
-|------|---------|------|
-| TUI Viewport 复用 | 2-3 小时 | ⭐⭐⭐ |
-| 配置系统更新 | 1-2 小时 | ⭐⭐⭐ |
+所有 Phase 1 任务已完成！以下是完整的功能列表：
+
+1. ✅ 上下文窗口监控
+2. ✅ Ralph Loop 自引用循环
+3. ✅ 关键词检测器
+4. ✅ Todo 继续执行器
+5. ✅ AGENTS.md 自动注入
+6. ✅ TUI Viewport 组件
+7. ✅ 配置系统增强
 
 ---
 
@@ -256,9 +350,9 @@ Ralph Loop 模式启动！将持续执行直到任务完成。
 
 | 组件 | 来源 | 复用方式 | 状态 |
 |------|------|---------|------|
-| TUI Viewport | `internal/tui/viewport.go` | 复制并适配 | ⏳ 待实施 |
+| TUI Viewport | `internal/adapters/tui/model.go` | 集成 bubbles/viewport | ✅ 已完成 |
 | LSP 客户端 | `internal/lsp/client.go` | 参考架构 | ⏳ 待实施 |
-| 配置管理 | `internal/config/loader.go` | 参考设计 | ⏳ 待实施 |
+| 配置管理 | `internal/infrastructure/config/config.go` | 使用 Viper | ✅ 已完成 |
 
 ---
 
@@ -290,6 +384,6 @@ Ralph Loop 模式启动！将持续执行直到任务完成。
 
 ---
 
-**文档版本**: 1.0
-**最后更新**: 2026-01-17
+**文档版本**: 1.1
+**最后更新**: 2026-01-18
 **维护者**: Kore Team

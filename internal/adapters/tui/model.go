@@ -12,6 +12,8 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
+
+	koretui "github.com/yukin/kore/internal/tui"
 )
 
 // ========== 状态枚举定义 ==========
@@ -138,8 +140,9 @@ type Model struct {
 	// 【新增】动画状态管理器（将逐步替换 thinking bool）
 	animatedStatus AnimatedStatus
 
-	// 【新增】Viewport 用于消息区域滚动和换行
-	viewport viewport.Model
+	// 【新增】Viewport 用于消息区域滚动和换行（使用新的 ViewportComponent）
+	viewport      viewport.Model           // Bubble Tea 原生 viewport（兼容性保留）
+	viewportComp  *koretui.ViewportComponent   // 新的增强 Viewport 组件
 
 	// 用户输入框
 	textInput     textinput.Model
@@ -322,11 +325,14 @@ func NewModel() *Model {
 		spinner:     sp,
 	}
 
-	// 【新增】初始化 viewport
+	// 【新增】初始化 viewport（Bubble Tea 原生）
 	vp := viewport.New(0, 0)
 	vp.Style = lipgloss.NewStyle().
 		Padding(0, 1).
 		Border(lipgloss.HiddenBorder())
+
+	// 【新增】初始化增强 Viewport 组件
+	viewportComp := koretui.NewViewportComponent()
 
 	return &Model{
 		messages:          make([]string, 0),
@@ -338,10 +344,11 @@ func NewModel() *Model {
 		confirmChoice:     0,
 		diffConfirmChoice: 0,
 		styles:            DefaultStyles(),
-		animatedStatus:    animStatus,           // 【新增】
-		viewport:          vp,                   // 【新增】
-		modal:             NewModalComponent(),   // 【新增】Modal 组件
-		welcome:           NewWelcomeComponent(), // 【新增】欢迎界面组件
+		animatedStatus:    animStatus,              // 【新增】
+		viewport:          vp,                      // 【新增】原生 viewport（兼容性保留）
+		viewportComp:      viewportComp,            // 【Phase 1.6】增强 Viewport 组件
+		modal:             NewModalComponent(),     // 【新增】Modal 组件
+		welcome:           NewWelcomeComponent(),   // 【新增】欢迎界面组件
 	}
 }
 
@@ -394,10 +401,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// 【新增】让 viewport 处理滚动（Ctrl+↑/↓）
-		var cmd tea.Cmd
-		m.viewport, cmd = m.viewport.Update(msg)
-		cmds = append(cmds, cmd)
+		// 【Phase 1.6】让 ViewportComponent 处理滚动（Ctrl+↑/↓）
+		if m.viewportComp != nil {
+			_, cmd := m.viewportComp.Update(msg)
+			cmds = append(cmds, cmd)
+		} else {
+			// 回退到原生 viewport（兼容性）
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 		// 处理其他按键
 		model, cmd := m.handleKeyMsg(msg)
@@ -423,6 +436,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			streamContent = strings.TrimRight(streamContent, "\n")
 			if streamContent != "" {
 				m.messages = append(m.messages, streamContent)
+				// 【Phase 1.6】使用 ViewportComponent 添加消息
+				if m.viewportComp != nil {
+					m.viewportComp.AddMessage(streamContent)
+				}
 				m.currentStream.Reset()
 				m.scrollToBottom()
 			}
@@ -442,11 +459,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			content = strings.TrimLeft(content, "\n")
 			content = strings.TrimRight(content, "\n")
 			m.messages = append(m.messages, content)
+			// 【Phase 1.6】使用 ViewportComponent 添加消息
+			if m.viewportComp != nil {
+				m.viewportComp.AddMessage(content)
+			}
 		} else {
 			// 【修复】清理渲染后的首尾空行
 			rendered = strings.TrimLeft(rendered, "\n")
 			rendered = strings.TrimRight(rendered, "\n")
 			m.messages = append(m.messages, rendered)
+			// 【Phase 1.6】使用 ViewportComponent 添加消息
+			if m.viewportComp != nil {
+				m.viewportComp.AddMessage(rendered)
+			}
 		}
 		m.scrollToBottom()
 		return m, nil
@@ -602,20 +627,32 @@ func (m *Model) View() string {
 		lipgloss.Height(statusBarView) +
 		lipgloss.Height(helpView)
 
-	// 3. 动态调整 viewport 高度（剩余空间）
-	availableHeight := m.height - bottomHeight
-	if availableHeight < 5 { // 最小高度保护
-		availableHeight = 5
+	// 3. 【Phase 1.6】使用 ViewportComponent 同步尺寸
+	var viewportView string
+	if m.viewportComp != nil {
+		// 同步 ViewportComponent 尺寸
+		m.viewportComp.SyncSize(m.width, m.height, bottomHeight)
+		// 设置样式
+		m.viewportComp.SetStyle(m.styles.Message)
+		// 更新消息内容
+		m.viewportComp.SetMessages(m.messages)
+		// 渲染视口
+		viewportView = m.viewportComp.View()
+	} else {
+		// 回退到原生 viewport（兼容性）
+		availableHeight := m.height - bottomHeight
+		if availableHeight < 5 { // 最小高度保护
+			availableHeight = 5
+		}
+		m.viewport.Height = availableHeight
+		m.viewport.Width = m.width
+		m.viewport.SetContent(m.renderMessagesContent())
+		viewportView = m.viewport.View()
 	}
-	m.viewport.Height = availableHeight
-	m.viewport.Width = m.width
-
-	// 4. 更新 viewport 内容
-	m.viewport.SetContent(m.renderMessagesContent())
 
 	// 5. 使用 lipgloss.JoinVertical 组装（稳健布局）
 	return lipgloss.JoinVertical(lipgloss.Left,
-		m.viewport.View(),
+		viewportView,
 		inputView,
 		statusBarView,
 		helpView,

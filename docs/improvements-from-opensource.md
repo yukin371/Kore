@@ -91,6 +91,7 @@ type KeywordDetector struct {
 type AgentMode string
 
 const (
+    ModeNormal   AgentMode = "normal"
     ModeUltraWork AgentMode = "ultrawork"  // 最大性能模式
     ModeSearch    AgentMode = "search"     // 搜索模式
     ModeAnalyze  AgentMode = "analyze"    // 分析模式
@@ -382,24 +383,55 @@ func LoadConfig(configPath string) (*Config, error) {
 
 ## 实施优先级
 
+### 时间线与负责人
+
+| Phase | 目标日期 | 负责人 |
+|------|----------|--------|
+| Phase 1 | 2026-01-24 | TBD |
+| Phase 2 | 2026-02-07 | TBD |
+| Phase 3 | 2026-02-21 | TBD |
+| Phase 4 | TBD | TBD |
+
 ### Phase 1（立即实施）
-1. ✅ 上下文窗口监控
-2. ✅ Ralph Loop 基础实现
-3. ✅ 关键词检测（`ultrawork`）
+1. [ ] 上下文窗口监控
+2. [ ] Ralph Loop 基础实现
+3. [ ] 关键词检测（`ultrawork`）
 
 ### Phase 2（1-2 周内）
-4. ✅ Todo 继续执行器
-5. ✅ AGENTS.md 自动注入
-6. ✅ 复用 TUI Viewport 组件
+4. [ ] Todo 继续执行器
+5. [ ] AGENTS.md 自动注入
+6. [ ] 复用 TUI Viewport 组件
 
 ### Phase 3（2-4 周内）
-7. ✅ 专业智能体系统（Oracle、Librarian）
-8. ✅ LSP 工具增强（prepare_rename、rename）
-9. ✅ MCP 支持
+7. [ ] 专业智能体系统（Oracle、Librarian）
+8. [ ] LSP 工具增强（prepare_rename、rename）
+9. [ ] MCP 支持
 
 ### Phase 4（未来考虑）
-10. ⏳ 多模态化
-11. ⏳ 完整的 Claude Code 兼容层
+10. [ ] 多模态化
+11. [ ] 完整的 Claude Code 兼容层
+
+---
+
+## 验收与测试
+
+- Ralph Loop：迭代上限生效；DONE 触发完成；触发 shouldStop 可终止；无死循环
+- Context Monitor：阈值触发准确；压缩后上下文可读；TUI 状态栏数值正确
+- 关键词检测：大小写不敏感；误触发率可接受；模式切换可回退
+- AGENTS.md 注入：向上遍历到项目根；去重；文件过大有策略（截断/摘要）
+- LSP 复用：最小功能集可用（Completion/Diagnostics）；失败可降级
+
+## 风险与回滚
+
+- 无限制循环风险：默认最大迭代 + shouldStop 终止；日志可观测
+- 上下文压缩误伤：保留关键轮次；支持手动回滚到未压缩版本
+- 模式误触发：关键词白名单可配置；提供显式关闭
+
+## 合规与来源记录
+
+- 复用前确认许可证类型（MIT/Apache 等）与兼容性
+- 复制代码时保留原始版权声明与 NOTICE
+- 在 `internal/client/tui/opencode-compat/README.md` 记录来源、版本与变更
 
 ---
 

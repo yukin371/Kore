@@ -41,6 +41,36 @@
   - 优化上下文传递策略
   - 灵感来源: [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
 
+#### 用户体验增强
+
+- **📝 Todo 继续执行器** - 强制完成所有任务
+  - 自动从对话历史中提取 TODO 事项
+  - 支持 `[ ]` 和 `[x]` 格式
+  - 按`优先级排序（用户 > 工具 > 系统）
+  - 智能检测完成状态
+  - 灵感来源: [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
+
+- **📁 AGENTS.md 自动注入** - 项目上下文智能加载
+  - 向上遍历目录树查找所有 AGENTS.md 文件
+  - 按优先级排序（越接近当前目录优先级越高）
+  - 自动注入到 AI 上下文中
+  - 智能缓存机制（1小时过期）
+  - 灵感来源: [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)
+
+- **🖥️ TUI Viewport 组件** - 平滑滚动体验
+  - 支持滚动浏览长消息历史
+  - 自动换行和文本包装
+  - 动态调整高度和宽度
+  - 支持 Ctrl+↑/↓ 快捷键滚动
+  - 灵感来源: [opencode-ai/opencode](https://github.com/opencode-ai/opencode)
+
+- **⚙️ 配置系统增强** - 灵活的配置管理
+  - 基于 Viper 的配置管理
+  - 支持 YAML 配置文件
+  - 环境变量覆盖（KORE_* 前缀）
+  - 多位置配置加载
+  - 灵感来源: [opencode-ai/opencode](https://github.com/opencode-ai/opencode)
+
 #### 使用示例
 
 ```bash

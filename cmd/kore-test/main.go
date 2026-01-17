@@ -14,7 +14,8 @@ import (
 func main() {
 	log.SetFlags(log.Lshortfile)
 
-	fmt.Println("=== Kore 2.0 gRPC 测试程序 ===\n")
+	fmt.Println("=== Kore 2.0 gRPC 测试程序 ===")
+	fmt.Println()
 
 	// 1. 启动服务器
 	fmt.Println("1. 启动服务器...")
