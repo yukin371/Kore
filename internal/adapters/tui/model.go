@@ -56,6 +56,28 @@ type ThinkingStartMsg struct{}
 // ThinkingStopMsg 停止思考状态
 type ThinkingStopMsg struct{}
 
+// ========== 新增：状态切换消息 ==========
+
+// StatusChangeMsg 状态切换消息
+type StatusChangeMsg struct {
+	State    StatusState       // 目标状态
+	Message  string            // 状态消息
+	Progress int               // 进度 0-100（可选）
+	Payload  map[string]string // 上下文元数据（可选）
+}
+
+// StatusProgressMsg 进度更新消息
+type StatusProgressMsg struct {
+	Progress int    // 进度值 0-100
+	Detail   string // 详细信息（可选）
+}
+
+// ResetStatusMsg 重置状态消息（用于定时器回调）
+type ResetStatusMsg struct{}
+
+// ToggleDetailsMsg 切换详情显示消息
+type ToggleDetailsMsg struct{}
+
 // ConfirmMsg 确认对话框消息
 type ConfirmMsg struct {
 	Action string   // 工具名称
@@ -359,6 +381,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.thinking = false
 		return m, nil
 
+	// ========== 新增：状态切换相关消息处理 ==========
+
+	case StatusChangeMsg:
+		// 处理状态切换
+		return m.handleStatusChange(msg)
+
+	case StatusProgressMsg:
+		// 处理进度更新
+		m.animatedStatus.progress = msg.Progress
+		if msg.Detail != "" {
+			m.animatedStatus.message = fmt.Sprintf("%s (%d%%)",
+				m.animatedStatus.message, msg.Progress)
+		}
+		return m, nil
+
+	case ResetStatusMsg:
+		// 处理自动重置（成功/错误状态 2 秒后）
+		return m.handleStatusReset()
+
+	case ToggleDetailsMsg:
+		// 切换详情显示
+		m.animatedStatus.showDetails = !m.animatedStatus.showDetails
+		return m, nil
+
 	case ConfirmMsg:
 		// 显示确认对话框
 		m.confirming = true
@@ -475,6 +521,12 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q":
 		// 退出程序
 		return m, tea.Quit
+
+	case "ctrl+d", "tab":
+		// 切换详情显示（D for Details, Tab 也直观）
+		return m, func() tea.Msg {
+			return ToggleDetailsMsg{}
+		}
 
 	case "enter":
 		// 提交输入（如果输入框激活）
@@ -771,4 +823,46 @@ func (m *Model) renderMarkdown(markdown string) (string, error) {
 	}
 
 	return rendered, nil
+}
+
+// ========== 状态处理方法 ==========
+
+// handleStatusChange 处理状态切换
+func (m *Model) handleStatusChange(msg StatusChangeMsg) (tea.Model, tea.Cmd) {
+	// 更新状态
+	m.animatedStatus.state = msg.State
+	m.animatedStatus.message = msg.Message
+	m.animatedStatus.progress = msg.Progress
+	m.animatedStatus.payload = msg.Payload
+	m.animatedStatus.timestamp = time.Now()
+
+	// 重新创建 spinner（应用新类型和颜色）
+	newSpinner := spinner.New()
+	newSpinner.Spinner = spinnerForState(msg.State)
+	newSpinner.Style = lipgloss.NewStyle().Foreground(colorForState(msg.State))
+	m.animatedStatus.spinner = newSpinner
+
+	// 启动定时器：临时状态（成功/错误）2 秒后自动重置
+	if msg.State == StatusSuccess || msg.State == StatusError {
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+			return ResetStatusMsg{}
+		})
+	}
+
+	// 其他状态：继续 spinner 动画
+	return m, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return SpinnerTickMsg(t)
+	})
+}
+
+// handleStatusReset 处理自动重置（用于定时器回调）
+func (m *Model) handleStatusReset() (tea.Model, tea.Cmd) {
+	// 防止覆盖新的操作状态
+	if m.animatedStatus.state == StatusSuccess ||
+		m.animatedStatus.state == StatusError {
+		m.animatedStatus.state = StatusIdle
+		m.animatedStatus.message = "准备就绪"
+		m.animatedStatus.progress = 0
+	}
+	return m, nil
 }
