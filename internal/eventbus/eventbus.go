@@ -32,6 +32,14 @@ const (
 	EventToolComplete     EventType = "tool.complete"
 	EventToolError        EventType = "tool.error"
 
+	// LLM 事件
+	EventLLMTokenStart    EventType = "llm.token_start"
+	EventLLMTokenDelta    EventType = "llm.token_delta"
+	EventLLMTokenComplete EventType = "llm.token_complete"
+	EventLLMRequestStart  EventType = "llm.request_start"
+	EventLLMRequestComplete EventType = "llm.request_complete"
+	EventLLMError         EventType = "llm.error"
+
 	// UI 事件
 	EventUIStatusUpdate   EventType = "ui.status_update"
 	EventUIStreamContent  EventType = "ui.stream_content"
@@ -670,4 +678,89 @@ func (bus *EventBus) Close() error {
 // generateID 生成唯一ID
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// NewLLMTokenStartEvent 创建 LLM token 开始事件
+func NewLLMTokenStartEvent(requestID, model string, maxTokens int) Event {
+	return &BaseEvent{
+		Type:      EventLLMTokenStart,
+		Timestamp: time.Now().Unix(),
+		Priority:  PriorityNormal,
+		Data: map[string]interface{}{
+			"request_id":  requestID,
+			"model":       model,
+			"max_tokens":  maxTokens,
+		},
+	}
+}
+
+// NewLLMTokenDeltaEvent 创建 LLM token 增量事件
+func NewLLMTokenDeltaEvent(requestID string, token string, tokenCount int) Event {
+	return &BaseEvent{
+		Type:      EventLLMTokenDelta,
+		Timestamp: time.Now().Unix(),
+		Priority:  PriorityLow, // 高频事件，低优先级
+		Data: map[string]interface{}{
+			"request_id":   requestID,
+			"token":        token,
+			"token_count":  tokenCount,
+		},
+	}
+}
+
+// NewLLMTokenCompleteEvent 创建 LLM token 完成事件
+func NewLLMTokenCompleteEvent(requestID string, totalTokens int, duration int64) Event {
+	return &BaseEvent{
+		Type:      EventLLMTokenComplete,
+		Timestamp: time.Now().Unix(),
+		Priority:  PriorityNormal,
+		Data: map[string]interface{}{
+			"request_id":    requestID,
+			"total_tokens":  totalTokens,
+			"duration_ms":   duration,
+			"tokens_per_second": float64(totalTokens) / (float64(duration) / 1000),
+		},
+	}
+}
+
+// NewLLMRequestStartEvent 创建 LLM 请求开始事件
+func NewLLMRequestStartEvent(requestID, model, provider string) Event {
+	return &BaseEvent{
+		Type:      EventLLMRequestStart,
+		Timestamp: time.Now().Unix(),
+		Priority:  PriorityNormal,
+		Data: map[string]interface{}{
+			"request_id": requestID,
+			"model":      model,
+			"provider":   provider,
+		},
+	}
+}
+
+// NewLLMRequestCompleteEvent 创建 LLM 请求完成事件
+func NewLLMRequestCompleteEvent(requestID string, totalTokens int, duration int64, success bool) Event {
+	return &BaseEvent{
+		Type:      EventLLMRequestComplete,
+		Timestamp: time.Now().Unix(),
+		Priority:  PriorityNormal,
+		Data: map[string]interface{}{
+			"request_id":    requestID,
+			"total_tokens":  totalTokens,
+			"duration_ms":   duration,
+			"success":       success,
+		},
+	}
+}
+
+// NewLLMErrorEvent 创建 LLM 错误事件
+func NewLLMErrorEvent(requestID string, err error) Event {
+	return &BaseEvent{
+		Type:      EventLLMError,
+		Timestamp: time.Now().Unix(),
+		Priority:  PriorityHigh, // 错误事件高优先级
+		Data: map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		},
+	}
 }

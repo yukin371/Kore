@@ -15,11 +15,17 @@ import (
 
 // SQLiteStore SQLite 持久化存储实现
 type SQLiteStore struct {
-	db *sql.DB
+	db        *sql.DB
+	encryptor Encryptor // 可选的加密器
 }
 
 // NewSQLiteStore 创建 SQLite 存储
 func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
+	return NewSQLiteStoreWithEncryption(dataDir, nil)
+}
+
+// NewSQLiteStoreWithEncryption 创建带加密的 SQLite 存储
+func NewSQLiteStoreWithEncryption(dataDir string, encryptor Encryptor) (*SQLiteStore, error) {
 	// 确保数据目录存在
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
@@ -45,7 +51,7 @@ func NewSQLiteStore(dataDir string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	return &SQLiteStore{db: db}, nil
+	return &SQLiteStore{db: db, encryptor: encryptor}, nil
 }
 
 // initSchema 初始化数据库表结构
@@ -377,7 +383,17 @@ func (s *SQLiteStore) SaveMessages(ctx context.Context, sessionID string, messag
 			}
 		}
 
-		if _, err := stmt.ExecContext(ctx, msg.ID, msg.SessionID, msg.Role, msg.Content, msg.Timestamp, string(metadataJSON)); err != nil {
+		// 如果启用了加密，加密消息内容
+		content := msg.Content
+		if s.encryptor != nil {
+			contentBytes, err := s.encryptor.EncryptToString([]byte(msg.Content))
+			if err != nil {
+				return fmt.Errorf("failed to encrypt message content: %w", err)
+			}
+			content = contentBytes
+		}
+
+		if _, err := stmt.ExecContext(ctx, msg.ID, msg.SessionID, msg.Role, content, msg.Timestamp, string(metadataJSON)); err != nil {
 			return fmt.Errorf("failed to insert message: %w", err)
 		}
 	}
@@ -413,6 +429,15 @@ func (s *SQLiteStore) LoadMessages(ctx context.Context, sessionID string) ([]ses
 
 		if err := rows.Scan(&id, &sessionID, &role, &content, &timestamp, &metadataJSON); err != nil {
 			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+
+		// 如果启用了加密，解密消息内容
+		if s.encryptor != nil {
+			decryptedBytes, err := s.encryptor.DecryptFromString(content)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decrypt message content: %w", err)
+			}
+			content = string(decryptedBytes)
 		}
 
 		// 反序列化元数据
@@ -521,6 +546,97 @@ func (s *SQLiteStore) SearchSessions(ctx context.Context, query string) ([]*sess
 	}
 
 	return sessions, nil
+}
+
+// StreamMessagesCursor 流式读取消息的游标
+type StreamMessagesCursor struct {
+	rows      *sql.Rows
+	ctx       context.Context
+	encryptor Encryptor // 可选的加密器
+	closed    bool
+}
+
+// Next 读取下一条消息
+func (cursor *StreamMessagesCursor) Next() (*session.Message, error) {
+	if cursor.closed {
+		return nil, fmt.Errorf("cursor is closed")
+	}
+
+	if !cursor.rows.Next() {
+		// 没有更多数据
+		return nil, nil
+	}
+
+	var id, sessionID, role, content string
+	var timestamp int64
+	var metadataJSON sql.NullString
+
+	if err := cursor.rows.Scan(&id, &sessionID, &role, &content, &timestamp, &metadataJSON); err != nil {
+		return nil, fmt.Errorf("failed to scan message: %w", err)
+	}
+
+	// 如果启用了加密，解密消息内容
+	if cursor.encryptor != nil {
+		decryptedBytes, err := cursor.encryptor.DecryptFromString(content)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt message content: %w", err)
+		}
+		content = string(decryptedBytes)
+	}
+
+	// 反序列化元数据
+	var metadata map[string]interface{}
+	if metadataJSON.Valid && metadataJSON.String != "" {
+		if err := json.Unmarshal([]byte(metadataJSON.String), &metadata); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal message metadata: %w", err)
+		}
+	}
+
+	msg := &session.Message{
+		ID:        id,
+		SessionID: sessionID,
+		Role:      role,
+		Content:   content,
+		Timestamp: timestamp,
+		Metadata:  metadata,
+	}
+
+	return msg, nil
+}
+
+// Close 关闭游标
+func (cursor *StreamMessagesCursor) Close() error {
+	if cursor.closed {
+		return nil
+	}
+
+	cursor.closed = true
+	if cursor.rows != nil {
+		return cursor.rows.Close()
+	}
+	return nil
+}
+
+// StreamMessages 流式读取会话消息
+func (s *SQLiteStore) StreamMessages(ctx context.Context, sessionID string) (*StreamMessagesCursor, error) {
+	query := `
+		SELECT id, session_id, role, content, timestamp, metadata
+		FROM messages
+		WHERE session_id = ?
+		ORDER BY timestamp ASC
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stream messages: %w", err)
+	}
+
+	return &StreamMessagesCursor{
+		rows:      rows,
+		ctx:       ctx,
+		encryptor: s.encryptor,
+		closed:    false,
+	}, nil
 }
 
 // Close 关闭数据库连接

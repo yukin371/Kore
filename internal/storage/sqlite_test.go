@@ -258,3 +258,182 @@ func BenchmarkSQLiteStoreLoad(b *testing.B) {
 		}
 	}
 }
+
+func TestStreamMessages(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	store, err := NewSQLiteStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	agent := core.NewAgent(nil, nil, nil, tmpDir)
+
+	// 创建会话并添加多条消息
+	sess := session.NewSession("stream-test", "Stream Test", session.ModeBuild, agent)
+
+	for i := 0; i < 10; i++ {
+		msg := session.Message{
+			SessionID: sess.ID,
+			Role:      "user",
+			Content:   fmt.Sprintf("Message %d", i),
+			Timestamp: int64(i),
+		}
+		sess.AddMessage(msg)
+	}
+
+	// 保存会话
+	if err := store.SaveSession(ctx, sess); err != nil {
+		t.Fatalf("Failed to save session: %v", err)
+	}
+
+	// 使用流式读取
+	cursor, err := store.StreamMessages(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Failed to open stream: %v", err)
+	}
+	defer cursor.Close()
+
+	// 逐条读取消息
+	count := 0
+	for {
+		msg, err := cursor.Next()
+		if err != nil {
+			t.Errorf("Failed to read message: %v", err)
+			break
+		}
+		if msg == nil {
+			break // 没有更多消息
+		}
+		count++
+	}
+
+	// 验证读取了所有消息
+	if count != 10 {
+		t.Errorf("Expected 10 messages, got %d", count)
+	}
+}
+
+func TestSQLiteStoreEncryption(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 创建加密器（AES-256）
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	encryptor, err := NewAESGCMEncryptor(key)
+	if err != nil {
+		t.Fatalf("Failed to create encryptor: %v", err)
+	}
+
+	// 创建带加密的存储
+	store, err := NewSQLiteStoreWithEncryption(tmpDir, encryptor)
+	if err != nil {
+		t.Fatalf("Failed to create encrypted store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	agent := core.NewAgent(nil, nil, nil, tmpDir)
+
+	// 创建会话并添加敏感消息
+	sess := session.NewSession("encrypted-session", "Encrypted Session", session.ModeBuild, agent)
+
+	sensitiveMsg := session.Message{
+		SessionID: sess.ID,
+		Role:      "user",
+		Content:   "This is sensitive data: API_KEY=sk-1234567890",
+		Timestamp: 0,
+	}
+	sess.AddMessage(sensitiveMsg)
+
+	// 保存会话（内容会被加密）
+	if err := store.SaveSession(ctx, sess); err != nil {
+		t.Fatalf("Failed to save session: %v", err)
+	}
+
+	// 加载会话（内容会被自动解密）
+	loadedSess, err := store.LoadSession(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Failed to load session: %v", err)
+	}
+
+	// 验证解密后的内容正确
+	messages := loadedSess.GetMessages()
+	if len(messages) != 1 {
+		t.Fatalf("Expected 1 message, got %d", len(messages))
+	}
+
+	if messages[0].Content != sensitiveMsg.Content {
+		t.Errorf("Decrypted content doesn't match original\ngot:  %s\nwant: %s", messages[0].Content, sensitiveMsg.Content)
+	}
+}
+
+func TestSQLiteStoreEncryptionStreaming(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// 创建加密器
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	encryptor, _ := NewAESGCMEncryptor(key)
+
+	store, err := NewSQLiteStoreWithEncryption(tmpDir, encryptor)
+	if err != nil {
+		t.Fatalf("Failed to create encrypted store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	agent := core.NewAgent(nil, nil, nil, tmpDir)
+
+	sess := session.NewSession("encrypted-stream", "Encrypted Stream", session.ModeBuild, agent)
+
+	// 添加多条消息
+	for i := 0; i < 5; i++ {
+		msg := session.Message{
+			SessionID: sess.ID,
+			Role:      "user",
+			Content:   fmt.Sprintf("Secret message %d", i),
+			Timestamp: int64(i),
+		}
+		sess.AddMessage(msg)
+	}
+
+	if err := store.SaveSession(ctx, sess); err != nil {
+		t.Fatalf("Failed to save session: %v", err)
+	}
+
+	// 流式读取并验证解密
+	cursor, err := store.StreamMessages(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Failed to open stream: %v", err)
+	}
+	defer cursor.Close()
+
+	count := 0
+	for {
+		msg, err := cursor.Next()
+		if err != nil {
+			t.Errorf("Failed to read message: %v", err)
+			break
+		}
+		if msg == nil {
+			break
+		}
+		// 验证解密正确
+		expectedContent := fmt.Sprintf("Secret message %d", count)
+		if msg.Content != expectedContent {
+			t.Errorf("Message %d content mismatch\ngot:  %s\nwant: %s", count, msg.Content, expectedContent)
+		}
+		count++
+	}
+
+	if count != 5 {
+		t.Errorf("Expected 5 messages, got %d", count)
+	}
+}
