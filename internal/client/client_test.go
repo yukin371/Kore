@@ -196,7 +196,7 @@ func TestSendMessage(t *testing.T) {
 
 	// 创建会话
 	ctx := context.Background()
-	session, err := client.CreateSession(ctx, "test-session", "general", nil)
+	_, err = client.CreateSession(ctx, "test-session", "general", nil)
 	require.NoError(t, err)
 
 	// 创建消息流

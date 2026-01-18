@@ -19,10 +19,15 @@ type ReActRunner interface {
 // SimpleReActRunner is a minimal runner built on top of core.Agent.
 type SimpleReActRunner struct {
 	Agent *core.Agent
+	PlanModel   string
+	ExecuteModel string
+	ReviewModel string
 }
 
 func (r *SimpleReActRunner) Plan(ctx context.Context, input string) (string, error) {
-	return r.singleShot(ctx, "You are a planner. Provide a concise plan.", input)
+	return r.withModel(r.PlanModel, func() (string, error) {
+		return r.singleShot(ctx, "You are a planner. Provide a concise plan.", input)
+	})
 }
 
 func (r *SimpleReActRunner) Execute(ctx context.Context, plan string) (string, error) {
@@ -31,7 +36,13 @@ func (r *SimpleReActRunner) Execute(ctx context.Context, plan string) (string, e
 	}
 
 	before := len(r.Agent.History.GetMessages())
-	if err := r.Agent.Run(ctx, plan); err != nil {
+	_, err := r.withModel(r.ExecuteModel, func() (string, error) {
+		if err := r.Agent.Run(ctx, plan); err != nil {
+			return "", err
+		}
+		return "", nil
+	})
+	if err != nil {
 		return "", err
 	}
 
@@ -54,7 +65,9 @@ func (r *SimpleReActRunner) Observe(ctx context.Context, execution string) (stri
 }
 
 func (r *SimpleReActRunner) Reflect(ctx context.Context, observation string) (string, error) {
-	return r.singleShot(ctx, "You are a reviewer. Reflect on the result and note risks.", observation)
+	return r.withModel(r.ReviewModel, func() (string, error) {
+		return r.singleShot(ctx, "You are a reviewer. Reflect on the result and note risks.", observation)
+	})
 }
 
 func (r *SimpleReActRunner) singleShot(ctx context.Context, systemPrompt string, input string) (string, error) {
@@ -89,4 +102,23 @@ func (r *SimpleReActRunner) singleShot(ctx context.Context, systemPrompt string,
 	}
 
 	return strings.TrimSpace(content.String()), nil
+}
+
+func (r *SimpleReActRunner) withModel(model string, fn func() (string, error)) (string, error) {
+	if r.Agent == nil || model == "" {
+		return fn()
+	}
+
+	original := r.Agent.LLMProvider.GetModel()
+	if model != "" && model != original {
+		r.Agent.LLMProvider.SetModel(model)
+	}
+
+	out, err := fn()
+
+	if model != "" && original != model {
+		r.Agent.LLMProvider.SetModel(original)
+	}
+
+	return out, err
 }
