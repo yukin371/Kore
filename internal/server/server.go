@@ -91,7 +91,6 @@ func (s *KoreServer) Start() error {
 		s.mu.Unlock()
 		return fmt.Errorf("server already started")
 	}
-	s.started = true
 	s.mu.Unlock()
 
 	// 创建监听器
@@ -99,6 +98,12 @@ func (s *KoreServer) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on %s: %w", s.listenAddr, err)
 	}
+
+	// 更新实际监听地址
+	s.mu.Lock()
+	s.listenAddr = lis.Addr().String()
+	s.started = true
+	s.mu.Unlock()
 
 	// 创建 gRPC 服务器
 	s.grpcServer = grpc.NewServer(
