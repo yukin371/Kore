@@ -18,10 +18,10 @@ type ReActRunner interface {
 
 // SimpleReActRunner is a minimal runner built on top of core.Agent.
 type SimpleReActRunner struct {
-	Agent *core.Agent
-	PlanModel   string
+	Agent        *core.Agent
+	PlanModel    string
 	ExecuteModel string
-	ReviewModel string
+	ReviewModel  string
 }
 
 func (r *SimpleReActRunner) Plan(ctx context.Context, input string) (string, error) {

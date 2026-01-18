@@ -30,10 +30,10 @@ type LoopIteration struct {
 
 // LoopController orchestrates Plan -> Execute -> Observe -> Reflect.
 type LoopController struct {
-	Runner    ReActRunner
-	MaxLoops  int
-	State     AgentState
-	Iterations []*LoopIteration
+	Runner          ReActRunner
+	MaxLoops        int
+	State           AgentState
+	Iterations      []*LoopIteration
 	AllowIncomplete bool
 }
 

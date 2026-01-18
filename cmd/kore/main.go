@@ -9,17 +9,20 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/yukin/kore/internal/adapters/cli"
-	openaiadapter "github.com/yukin/kore/internal/adapters/openai"
 	ollamaadapter "github.com/yukin/kore/internal/adapters/ollama"
+	openaiadapter "github.com/yukin/kore/internal/adapters/openai"
 	"github.com/yukin/kore/internal/adapters/tui"
+	agentpkg "github.com/yukin/kore/internal/agent"
+	koreconfig "github.com/yukin/kore/internal/config"
 	"github.com/yukin/kore/internal/core"
 	"github.com/yukin/kore/internal/infrastructure/config"
-	koreconfig "github.com/yukin/kore/internal/config"
 	"github.com/yukin/kore/internal/tools"
 	"github.com/yukin/kore/pkg/logger"
 	"github.com/yukin/kore/pkg/utils"
@@ -200,6 +203,8 @@ func runChat(cmd *cobra.Command, args []string) error {
 	agent.Config.LLM.Temperature = cfg.LLM.Temperature
 	agent.Config.LLM.MaxTokens = cfg.LLM.MaxTokens
 
+	orchestrator := loadOrchestrator(projectRoot)
+
 	// 启动会话
 	uiAdapter.ShowStatus("Kore 正在初始化...")
 
@@ -208,7 +213,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		if err := agent.Run(ctx, message); err != nil {
+		if err := runWithOrchestration(ctx, agent, orchestrator, message); err != nil {
 			return fmt.Errorf("Agent 运行失败: %w", err)
 		}
 	} else {
@@ -230,7 +235,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 					if strings.TrimSpace(input) != "" {
 						uiAdapter.ShowStatus("处理中...")
 						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-						if err := agent.Run(ctx, input); err != nil {
+						if err := runWithOrchestration(ctx, agent, orchestrator, input); err != nil {
 							uiAdapter.SendStream(fmt.Sprintf("\n错误: %v\n", err))
 						}
 						cancel()
@@ -260,7 +265,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 				}
 
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				if err := agent.Run(ctx, input); err != nil {
+				if err := runWithOrchestration(ctx, agent, orchestrator, input); err != nil {
 					uiAdapter.SendStream(fmt.Sprintf("\n错误: %v\n", err))
 				}
 				cancel()
@@ -282,6 +287,97 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func loadOrchestrator(projectRoot string) *agentpkg.Orchestrator {
+	agentsPath := filepath.Join(projectRoot, "configs", "agents.yaml")
+	if _, err := os.Stat(agentsPath); err != nil {
+		return nil
+	}
+
+	agentsCfg, err := agentpkg.LoadAgentsConfig(agentsPath)
+	if err != nil {
+		logger.Warn("加载 agents.yaml 失败: %v", err)
+		return nil
+	}
+
+	orchestrator := &agentpkg.Orchestrator{Agents: agentsCfg}
+
+	policyPath := filepath.Join(projectRoot, "configs", "policy.yaml")
+	if _, err := os.Stat(policyPath); err == nil {
+		policyCfg, err := agentpkg.LoadPolicyConfig(policyPath)
+		if err != nil {
+			logger.Warn("加载 policy.yaml 失败: %v", err)
+		} else {
+			orchestrator.Policy = policyCfg
+		}
+	}
+
+	return orchestrator
+}
+
+func runWithOrchestration(ctx context.Context, agent *core.Agent, orchestrator *agentpkg.Orchestrator, input string) error {
+	if orchestrator == nil {
+		return agent.Run(ctx, input)
+	}
+
+	execRoles := executionRoles(orchestrator.Agents)
+	execModel := modelForRole(orchestrator, pickRole(execRoles))
+	planModel := modelForRole(orchestrator, orchestrator.Agents.Default.Planner)
+	reviewModel := modelForRole(orchestrator, orchestrator.Agents.Default.Reviewer)
+
+	runner := &agentpkg.SimpleReActRunner{
+		Agent:        agent,
+		PlanModel:    planModel,
+		ExecuteModel: execModel,
+		ReviewModel:  reviewModel,
+	}
+
+	controller := &agentpkg.LoopController{
+		Runner:          runner,
+		MaxLoops:        1,
+		AllowIncomplete: true,
+	}
+
+	return controller.Run(ctx, input)
+}
+
+func executionRoles(cfg agentpkg.AgentsConfig) []string {
+	skip := map[string]bool{
+		cfg.Default.Supervisor: true,
+		cfg.Default.Planner:    true,
+		cfg.Default.Reviewer:   true,
+	}
+
+	roles := make([]string, 0, len(cfg.Roles))
+	for role := range cfg.Roles {
+		if skip[role] {
+			continue
+		}
+		roles = append(roles, role)
+	}
+
+	sort.Strings(roles)
+	return roles
+}
+
+func pickRole(roles []string) string {
+	if len(roles) == 0 {
+		return ""
+	}
+	return roles[0]
+}
+
+func modelForRole(orchestrator *agentpkg.Orchestrator, role string) string {
+	if orchestrator == nil || role == "" {
+		return ""
+	}
+
+	model, _, err := orchestrator.SelectModel(role, map[string]bool{})
+	if err != nil {
+		return ""
+	}
+	return model
 }
 
 // convertLegacyConfig converts legacy config to new config format
