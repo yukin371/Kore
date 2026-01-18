@@ -205,7 +205,7 @@ func TestSendMessage(t *testing.T) {
 	defer stream.Close()
 
 	// 发送消息
-	err = stream.Send(session.Id, "Hello, Kore!", "user", nil)
+	err = stream.Send(ctx, "Hello, Kore!", "user", nil)
 	require.NoError(t, err)
 
 	// 接收响应
@@ -363,7 +363,11 @@ func TestLSPMethods(t *testing.T) {
 
 // BenchmarkClientCreation 性能测试
 func BenchmarkClientCreation(b *testing.B) {
-	srv := setupTestServer(&testing{})
+	srv := server.NewKoreServer("127.0.0.1:0",
+		server.WithSessionManager(server.NewMockSessionManager()),
+		server.WithEventBus(server.NewMockEventBus()),
+	)
+	_ = srv.Start()
 	defer srv.Stop()
 
 	addr := srv.Addr()
@@ -378,7 +382,11 @@ func BenchmarkClientCreation(b *testing.B) {
 
 // BenchmarkCreateSessionViaClient 性能测试
 func BenchmarkCreateSessionViaClient(b *testing.B) {
-	srv := setupTestServer(&testing{})
+	srv := server.NewKoreServer("127.0.0.1:0",
+		server.WithSessionManager(server.NewMockSessionManager()),
+		server.WithEventBus(server.NewMockEventBus()),
+	)
+	_ = srv.Start()
 	defer srv.Stop()
 
 	addr := srv.Addr()

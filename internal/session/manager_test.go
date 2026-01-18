@@ -2,11 +2,11 @@ package session
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/yukin/kore/internal/core"
-	"github.com/yukin/kore/internal/storage"
 )
 
 // MockStorage 用于测试的模拟存储
@@ -32,7 +32,7 @@ func (m *MockStorage) SaveSession(ctx context.Context, session *Session) error {
 func (m *MockStorage) LoadSession(ctx context.Context, sessionID string) (*Session, error) {
 	sess, ok := m.sessions[sessionID]
 	if !ok {
-		return nil, storage.ErrSessionNotFound
+		return nil, errors.New("session not found")
 	}
 	return sess, nil
 }
@@ -47,7 +47,7 @@ func (m *MockStorage) ListSessions(ctx context.Context) ([]*Session, error) {
 
 func (m *MockStorage) DeleteSession(ctx context.Context, sessionID string) error {
 	if _, ok := m.sessions[sessionID]; !ok {
-		return storage.ErrSessionNotFound
+		return errors.New("session not found")
 	}
 	delete(m.sessions, sessionID)
 	delete(m.messages, sessionID)

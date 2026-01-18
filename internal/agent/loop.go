@@ -34,6 +34,7 @@ type LoopController struct {
 	MaxLoops  int
 	State     AgentState
 	Iterations []*LoopIteration
+	AllowIncomplete bool
 }
 
 // Run executes the state machine until completion or max loops.
@@ -93,6 +94,10 @@ func (lc *LoopController) Run(ctx context.Context, input string) error {
 		lc.Iterations = append(lc.Iterations, iter)
 		current = reflection
 		lc.State = StatePlanning
+	}
+
+	if lc.AllowIncomplete {
+		return nil
 	}
 
 	return fmt.Errorf("reached max loops: %d", maxLoops)

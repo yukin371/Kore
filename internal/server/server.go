@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	rpc "github.com/yukin/kore/api/proto"
+	"github.com/yukin/kore/internal/session"
 )
 
 // KoreServer 实现 gRPC 服务
@@ -133,10 +134,16 @@ func (s *KoreServer) Stop() error {
 		s.mu.Unlock()
 		return fmt.Errorf("server not started")
 	}
+	s.started = false // 标记为已停止，防止重复调用
 	s.mu.Unlock()
 
-	// 通知关闭
-	close(s.shutdown)
+	// 通知关闭（使用 select 避免重复关闭）
+	select {
+	case <-s.shutdown:
+		// 已经关闭
+	default:
+		close(s.shutdown)
+	}
 
 	// 停止接受新连接
 	if s.grpcServer != nil {
@@ -516,7 +523,7 @@ type EventBus interface {
 
 // AgentProcessor Agent 处理器接口（用于消息处理）
 type AgentProcessor interface {
-	ProcessMessage(ctx context.Context, session *session.Session, content string, callback func(string)) error
+	ProcessMessage(ctx context.Context, sess *session.Session, content string, callback func(string)) error
 }
 
 // CommandExecutor 命令执行器接口

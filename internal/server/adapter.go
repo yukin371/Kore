@@ -223,24 +223,25 @@ func (a *SessionManagerAdapter) GetSessionInternal(sessionID string) (*session.S
 
 // toRPCSession 转换为 gRPC Session 格式
 func (a *SessionManagerAdapter) toRPCSession(sess *session.Session) *rpc.Session {
-	sess.mu.RLock()
-	defer sess.mu.RUnlock()
+	// 使用 getter 方法来获取数据，避免直接访问未导出的字段
+	id, name, agentMode, status, createdAt, updatedAt, metadata := sess.GetDataForStorage()
 
-	metadata := make(map[string]string)
-	for k, v := range sess.Metadata {
+	// 转换 metadata
+	metadataStr := make(map[string]string)
+	for k, v := range metadata {
 		if str, ok := v.(string); ok {
-			metadata[k] = str
+			metadataStr[k] = str
 		}
 	}
 
 	return &rpc.Session{
-		Id:           sess.ID,
-		Name:         sess.Name,
-		AgentType:    string(sess.AgentMode),
-		Status:       a.statusToString(sess.Status),
-		CreatedAt:    sess.CreatedAt,
-		LastActiveAt: sess.UpdatedAt,
-		Metadata:     metadata,
+		Id:           id,
+		Name:         name,
+		AgentType:    string(agentMode),
+		Status:       a.statusToString(status),
+		CreatedAt:    createdAt,
+		LastActiveAt: updatedAt,
+		Metadata:     metadataStr,
 	}
 }
 
@@ -297,7 +298,7 @@ func (a *EventBusAdapter) Subscribe(ctx context.Context, sessionID string, event
 			subID := a.bus.Subscribe(et, func(ctx context.Context, event eventbus.Event) error {
 				// 过滤会话 ID
 				if sessionID != "" && sessionID != "*" {
-					if sid, ok := event.Data["session_id"].(string); ok && sid != sessionID {
+					if sid, ok := event.GetData()["session_id"].(string); ok && sid != sessionID {
 						return nil
 					}
 				}
@@ -329,17 +330,13 @@ func (a *EventBusAdapter) Subscribe(ctx context.Context, sessionID string, event
 // Publish 发布事件（实现 gRPC 接口）
 func (a *EventBusAdapter) Publish(event *rpc.Event) error {
 	// 转换为内部事件格式
-	internalEvent := eventbus.Event{
-		Type:      eventbus.EventType(event.Type),
-		Timestamp: event.Timestamp,
-		Data:      make(map[string]interface{}),
-	}
+	data := make(map[string]interface{})
 
 	// 解析数据（JSON bytes -> map）
 	// 注意：这里简化处理，实际应该解析 JSON
 	// TODO: 实现 JSON 解析
 
-	return a.bus.Publish(internalEvent.Type, internalEvent.Data)
+	return a.bus.Publish(eventbus.EventType(event.Type), data)
 }
 
 // toRPCEvent 转换为 gRPC Event 格式
@@ -348,10 +345,10 @@ func (a *EventBusAdapter) toRPCEvent(event eventbus.Event) *rpc.Event {
 	// TODO: 实现 JSON 序列化
 
 	return &rpc.Event{
-		Type:      string(event.Type),
-		SessionId: getStringFromMap(event.Data, "session_id"),
+		Type:      string(event.GetType()),
+		SessionId: getStringFromMap(event.GetData(), "session_id"),
 		Data:      []byte{}, // TODO: JSON 序列化
-		Timestamp: event.Timestamp,
+		Timestamp: event.GetTimestamp(),
 	}
 }
 

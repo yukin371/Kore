@@ -103,19 +103,13 @@ func initSchema(db *sql.DB) error {
 
 // SaveSession 保存会话元数据
 func (s *SQLiteStore) SaveSession(ctx context.Context, sess *session.Session) error {
-	// 获取会话数据
-	sess.mu.RLock()
-	id := sess.ID
-	name := sess.Name
-	agentMode := sess.AgentMode
-	status := sess.Status
-	createdAt := sess.CreatedAt
-	updatedAt := sess.UpdatedAt
-	description := sess.Description
-	tags := sess.Tags
-	statistics := sess.Statistics
-	metadata := sess.Metadata
-	sess.mu.RUnlock()
+	// 获取会话数据（使用线程安全的方法）
+	id, name, agentMode, status, createdAt, updatedAt, metadata := sess.GetDataForStorage()
+
+	// 获取扩展字段（需要通过方法获取）
+	description := sess.GetDescription()
+	tags := sess.GetTags()
+	statistics := sess.GetStatistics()
 
 	// 序列化元数据
 	var metadataJSON []byte
