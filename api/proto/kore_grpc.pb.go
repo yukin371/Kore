@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             v6.33.0--rc2
-// source: api/proto/kore.proto
+// source: kore.proto
 
 package rpc
 
@@ -707,5 +707,5 @@ var Kore_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "api/proto/kore.proto",
+	Metadata: "kore.proto",
 }

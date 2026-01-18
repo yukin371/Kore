@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yukin/kore/internal/eventbus"
+	"github.com/yukin371/Kore/internal/eventbus"
 )
 
 // UIInterface defines the abstract interface for user interaction

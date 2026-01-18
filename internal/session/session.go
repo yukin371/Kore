@@ -5,7 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yukin/kore/internal/core"
+	"github.com/google/uuid"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // SessionStatus 表示会话状态
@@ -120,6 +121,11 @@ func NewSession(id string, name string, agentMode AgentMode, agent *core.Agent) 
 func (s *Session) AddMessage(msg Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// 自动生成消息ID（如果未设置）
+	if msg.ID == "" {
+		msg.ID = generateMessageID()
+	}
 
 	s.Messages = append(s.Messages, msg)
 	s.UpdatedAt = time.Now().Unix()
@@ -383,4 +389,9 @@ func estimateTokens(text string) int64 {
 	total = chineseChars + int(float64(englishWords)*1.3)
 
 	return int64(total)
+}
+
+// generateMessageID 生成唯一的消息ID
+func generateMessageID() string {
+	return uuid.New().String()
 }

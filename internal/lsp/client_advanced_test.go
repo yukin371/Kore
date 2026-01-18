@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yukin/kore/pkg/logger"
+	"github.com/yukin371/Kore/pkg/logger"
 )
 
 // TestFormatting tests document formatting

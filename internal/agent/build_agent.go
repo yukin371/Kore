@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yukin/kore/internal/core"
-	"github.com/yukin/kore/internal/types"
+	"github.com/yukin371/Kore/internal/core"
+	"github.com/yukin371/Kore/internal/types"
 )
 
 // BuildAgent 构建模式 Agent

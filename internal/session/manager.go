@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/yukin/kore/internal/core"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // Storage 定义会话存储接口

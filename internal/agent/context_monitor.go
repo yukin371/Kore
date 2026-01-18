@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/yukin/kore/internal/core"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // ContextMonitor 上下文窗口监控器

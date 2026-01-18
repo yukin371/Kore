@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/yukin/kore/internal/lsp"
-	"github.com/yukin/kore/pkg/logger"
+	"github.com/yukin371/Kore/internal/lsp"
+	"github.com/yukin371/Kore/pkg/logger"
 )
 
 // LSPManager 管理 LSP 服务器连接

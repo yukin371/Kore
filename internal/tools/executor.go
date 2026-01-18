@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/yukin/kore/internal/core"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // Tool 定义工具接口

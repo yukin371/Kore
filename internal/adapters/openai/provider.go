@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yukin/kore/internal/core"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // Provider 实现 OpenAI 的 LLMProvider 接口

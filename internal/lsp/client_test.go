@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yukin/kore/pkg/logger"
+	"github.com/yukin371/Kore/pkg/logger"
 )
 
 // TestClientInitialization 测试客户端初始化流程

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yukin/kore/pkg/logger"
+	"github.com/yukin371/Kore/pkg/logger"
 )
 
 func TestJSONRPC2(t *testing.T) {

@@ -7,7 +7,7 @@ package agent
 import (
 	"strings"
 
-	"github.com/yukin/kore/internal/types"
+	"github.com/yukin371/Kore/internal/types"
 )
 
 // KeywordDetector 关键词检测器

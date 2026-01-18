@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/viper"
-	"github.com/yukin/kore/pkg/utils"
+	"github.com/yukin371/Kore/pkg/utils"
 )
 
 // Config holds all configuration for Kore

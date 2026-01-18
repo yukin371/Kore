@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/yukin/kore/internal/session"
+	"github.com/yukin371/Kore/internal/session"
 )
 
 // SessionManager 会话管理器接口（工具使用）

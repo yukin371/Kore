@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	rpc "github.com/yukin/kore/api/proto"
+	rpc "github.com/yukin371/Kore/api/proto"
 )
 
 // KoreClient Kore 客户端

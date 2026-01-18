@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yukin/kore/internal/infrastructure/fs"
+	"github.com/yukin371/Kore/internal/infrastructure/fs"
 )
 
 // ListFilesTool 实现文件列表功能

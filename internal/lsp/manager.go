@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yukin/kore/pkg/logger"
+	"github.com/yukin371/Kore/pkg/logger"
 )
 
 var (

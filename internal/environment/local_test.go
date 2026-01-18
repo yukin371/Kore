@@ -2,8 +2,10 @@ package environment
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,14 +40,12 @@ func TestNewLocalEnvironment_NonExistentDir(t *testing.T) {
 func TestLocalEnvironment_Execute(t *testing.T) {
 	tmpDir := t.TempDir()
 	env, _ := NewLocalEnvironment(tmpDir, SecurityLevelStandard)
+	allowTestCommand(t, env)
 
 	ctx := context.Background()
 
 	// Test simple command
-	cmd := &Command{
-		Name: "echo",
-		Args: []string{"hello", "world"},
-	}
+	cmd := helperCommand("echo", "hello", "world")
 
 	result, err := env.Execute(ctx, cmd)
 	if err != nil {
@@ -98,16 +98,14 @@ func TestLocalEnvironment_Execute_DangerousCommand(t *testing.T) {
 func TestLocalEnvironment_Execute_WithTimeout(t *testing.T) {
 	tmpDir := t.TempDir()
 	env, _ := NewLocalEnvironment(tmpDir, SecurityLevelStandard)
+	allowTestCommand(t, env)
 
 	ctx := context.Background()
 
 	// 测试超时设置是否正确传递
 	// 使用一个会快速完成的命令，但设置超时参数
-	cmd := &Command{
-		Name:    "echo",
-		Args:    []string{"test"},
-		Timeout: 5 * time.Second,
-	}
+	cmd := helperCommand("echo", "test")
+	cmd.Timeout = 5 * time.Second
 
 	result, err := env.Execute(ctx, cmd)
 
@@ -351,13 +349,11 @@ func TestLocalEnvironment_VirtualFileSystem(t *testing.T) {
 func TestLocalEnvironment_ExecuteStream(t *testing.T) {
 	tmpDir := t.TempDir()
 	env, _ := NewLocalEnvironment(tmpDir, SecurityLevelStandard)
+	allowTestCommand(t, env)
 
 	ctx := context.Background()
 
-	cmd := &Command{
-		Name: "echo",
-		Args: []string{"stream", "test"},
-	}
+	cmd := helperCommand("echo", "stream", "test")
 
 	reader, err := env.ExecuteStream(ctx, cmd)
 	if err != nil {
@@ -376,4 +372,65 @@ func TestLocalEnvironment_ExecuteStream(t *testing.T) {
 	if output != "stream test\n" {
 		t.Errorf("ExecuteStream() output = %s, want 'stream test\\n'", output)
 	}
+}
+
+func helperCommand(args ...string) *Command {
+	exe, err := os.Executable()
+	if err != nil {
+		return &Command{Name: "false"}
+	}
+
+	allArgs := []string{"-test.run=TestHelperProcess", "--"}
+	allArgs = append(allArgs, args...)
+
+	return &Command{
+		Name: exe,
+		Args: allArgs,
+		Env: map[string]string{
+			"KORE_TEST_HELPER": "1",
+		},
+	}
+}
+
+func allowTestCommand(t *testing.T, env *LocalEnvironment) {
+	t.Helper()
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+
+	env.security.AddAllowedCommand(exe)
+}
+
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("KORE_TEST_HELPER") != "1" {
+		return
+	}
+
+	sep := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			sep = i
+			break
+		}
+	}
+
+	if sep == -1 || sep+1 >= len(os.Args) {
+		fmt.Fprintln(os.Stdout, "")
+		os.Exit(0)
+	}
+
+	command := os.Args[sep+1]
+	args := os.Args[sep+2:]
+
+	switch command {
+	case "echo":
+		fmt.Fprintln(os.Stdout, strings.Join(args, " "))
+	default:
+		fmt.Fprintf(os.Stderr, "unknown helper command: %s\n", command)
+		os.Exit(1)
+	}
+
+	os.Exit(0)
 }

@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yukin/kore/internal/core"
-	"github.com/yukin/kore/internal/types"
+	"github.com/yukin371/Kore/internal/core"
+	"github.com/yukin371/Kore/internal/types"
 )
 
 // PlanAgent 规划模式 Agent

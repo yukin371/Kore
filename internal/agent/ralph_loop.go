@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yukin/kore/internal/core"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // RalphLoopConfig Ralph Loop 配置

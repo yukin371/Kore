@@ -5,8 +5,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/yukin/kore/internal/core"
-	"github.com/yukin/kore/internal/types"
+	"github.com/yukin371/Kore/internal/core"
+	"github.com/yukin371/Kore/internal/types"
 )
 
 // mockToolExecutor 模拟工具执行器

@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/yukin/kore/internal/client"
-	"github.com/yukin/kore/internal/server"
+	"github.com/yukin371/Kore/internal/client"
+	"github.com/yukin371/Kore/internal/server"
 )
 
 func main() {

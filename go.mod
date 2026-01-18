@@ -1,4 +1,4 @@
-module github.com/yukin/kore
+module github.com/yukin371/Kore
 
 go 1.24.0
 

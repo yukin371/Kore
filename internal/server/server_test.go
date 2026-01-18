@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	rpc "github.com/yukin/kore/api/proto"
+	rpc "github.com/yukin371/Kore/api/proto"
 )
 
 // TestCreateSession 测试创建会话

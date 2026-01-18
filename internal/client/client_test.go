@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	rpc "github.com/yukin/kore/api/proto"
-	"github.com/yukin/kore/internal/server"
+	rpc "github.com/yukin371/Kore/api/proto"
+	"github.com/yukin371/Kore/internal/server"
 )
 
 // setupTestServer 设置测试服务器

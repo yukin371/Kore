@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package kore;
 
-option go_package = "github.com/yukin/kore/api/proto;rpc";
+option go_package = "github.com/yukin371/Kore/api/proto;rpc";
 
 // Kore 服务定义
 service Kore {

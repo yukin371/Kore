@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	rpc "github.com/yukin/kore/api/proto"
-	"github.com/yukin/kore/internal/session"
+	rpc "github.com/yukin371/Kore/api/proto"
+	"github.com/yukin371/Kore/internal/session"
 )
 
 // KoreServer 实现 gRPC 服务

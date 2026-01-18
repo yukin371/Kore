@@ -10,7 +10,7 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
-	"github.com/yukin/kore/internal/session"
+	"github.com/yukin371/Kore/internal/session"
 )
 
 // SQLiteStore SQLite 持久化存储实现
@@ -164,6 +164,14 @@ func (s *SQLiteStore) SaveSession(ctx context.Context, sess *session.Session) er
 		return fmt.Errorf("failed to save session: %w", err)
 	}
 
+	// 保存消息
+	messages := sess.GetMessages()
+	if len(messages) > 0 {
+		if err := s.SaveMessages(ctx, id, messages); err != nil {
+			return fmt.Errorf("failed to save messages: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -229,6 +237,13 @@ func (s *SQLiteStore) LoadSession(ctx context.Context, sessionID string) (*sessi
 		Metadata:   metadata,
 		Messages:   make([]session.Message, 0),
 	}
+
+	// 自动加载消息
+	messages, err := s.LoadMessages(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load messages: %w", err)
+	}
+	sess.Messages = messages
 
 	return sess, nil
 }

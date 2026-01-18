@@ -15,17 +15,17 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/yukin/kore/internal/adapters/cli"
-	ollamaadapter "github.com/yukin/kore/internal/adapters/ollama"
-	openaiadapter "github.com/yukin/kore/internal/adapters/openai"
-	"github.com/yukin/kore/internal/adapters/tui"
-	agentpkg "github.com/yukin/kore/internal/agent"
-	koreconfig "github.com/yukin/kore/internal/config"
-	"github.com/yukin/kore/internal/core"
-	"github.com/yukin/kore/internal/infrastructure/config"
-	"github.com/yukin/kore/internal/tools"
-	"github.com/yukin/kore/pkg/logger"
-	"github.com/yukin/kore/pkg/utils"
+	"github.com/yukin371/Kore/internal/adapters/cli"
+	ollamaadapter "github.com/yukin371/Kore/internal/adapters/ollama"
+	openaiadapter "github.com/yukin371/Kore/internal/adapters/openai"
+	"github.com/yukin371/Kore/internal/adapters/tui"
+	agentpkg "github.com/yukin371/Kore/internal/agent"
+	koreconfig "github.com/yukin371/Kore/internal/config"
+	"github.com/yukin371/Kore/internal/core"
+	"github.com/yukin371/Kore/internal/infrastructure/config"
+	"github.com/yukin371/Kore/internal/tools"
+	"github.com/yukin371/Kore/pkg/logger"
+	"github.com/yukin371/Kore/pkg/utils"
 )
 
 // version is set by build flags during release

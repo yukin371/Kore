@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	rpc "github.com/yukin/kore/api/proto"
-	"github.com/yukin/kore/internal/core"
-	"github.com/yukin/kore/internal/eventbus"
-	"github.com/yukin/kore/internal/session"
+	rpc "github.com/yukin371/Kore/api/proto"
+	"github.com/yukin371/Kore/internal/core"
+	"github.com/yukin371/Kore/internal/eventbus"
+	"github.com/yukin371/Kore/internal/session"
 )
 
 // Mock implementations for testing

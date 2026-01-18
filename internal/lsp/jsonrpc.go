@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/yukin/kore/pkg/logger"
+	"github.com/yukin371/Kore/pkg/logger"
 )
 
 var (

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yukin/kore/internal/core"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // 支持原生工具调用的 Ollama 模型列表

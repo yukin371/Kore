@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
 
-	koretui "github.com/yukin/kore/internal/tui"
+	koretui "github.com/yukin371/Kore/internal/tui"
 )
 
 // ========== 状态枚举定义 ==========

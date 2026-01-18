@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yukin/kore/internal/core"
+	"github.com/yukin371/Kore/internal/core"
 )
 
 // MockStorage 用于测试的模拟存储

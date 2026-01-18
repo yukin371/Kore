@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/yukin/kore/internal/server"
+	"github.com/yukin371/Kore/internal/server"
 )
 
 var (

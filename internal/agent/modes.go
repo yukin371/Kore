@@ -16,8 +16,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/yukin/kore/internal/core"
-	"github.com/yukin/kore/internal/types"
+	"github.com/yukin371/Kore/internal/core"
+	"github.com/yukin371/Kore/internal/types"
 )
 
 // AgentModeConfig Agent 模式配置
