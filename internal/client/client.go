@@ -334,19 +334,34 @@ func (c *KoreClient) LSPHover(ctx context.Context, req *rpc.LSPHoverRequest) (*r
 // 事件订阅
 // ============================================================================
 
-// EventSubscriber 事件订阅器（暂时占位符）
+// EventSubscriber 事件订阅器
 type EventSubscriber struct {
-	// TODO: Phase 5 实现
+	stream rpc.Kore_SubscribeEventsClient
 }
 
-// Recv 接收事件（占位符）
+// Recv 接收事件
 func (es *EventSubscriber) Recv() (*rpc.Event, error) {
-	return nil, fmt.Errorf("not yet implemented")
+	return es.stream.Recv()
 }
 
-// SubscribeEvents 订阅事件
+// Close 关闭订阅
+func (es *EventSubscriber) Close() error {
+	// gRPC streaming 会自动关闭，这里只是一个占位符
+	return nil
+}
+
+// SubscribeEvents 订阅事件流
 func (c *KoreClient) SubscribeEvents(ctx context.Context, req *rpc.SubscribeRequest) (*EventSubscriber, error) {
-	return nil, fmt.Errorf("client-side event stream not yet implemented (Phase 5)")
+	if !c.IsConnected() {
+		return nil, fmt.Errorf("not connected to server")
+	}
+
+	stream, err := c.client.SubscribeEvents(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to events: %w", err)
+	}
+
+	return &EventSubscriber{stream: stream}, nil
 }
 
 // ============================================================================

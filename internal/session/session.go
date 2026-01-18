@@ -36,6 +36,16 @@ type Message struct {
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
+// SessionStats 会话统计信息
+type SessionStats struct {
+	MessageCount   int   `json:"message_count"`   // 消息总数
+	UserMsgCount   int   `json:"user_msg_count"`   // 用户消息数
+	AssistantMsgCount int `json:"assistant_msg_count"` // 助手消息数
+	ToolCallCount  int   `json:"tool_call_count"`  // 工具调用次数
+	TokenUsed      int64 `json:"token_used"`       // 使用的 token 数（估算）
+	LastActiveAt   int64 `json:"last_active_at"`   // 最后活跃时间
+}
+
 // Session 表示一个会话
 type Session struct {
 	// 基础信息
@@ -46,11 +56,19 @@ type Session struct {
 	CreatedAt int64                  `json:"created_at"`
 	UpdatedAt int64                  `json:"updated_at"`
 
+	// 扩展元数据
+	Description string                 `json:"description,omitempty"` // 会话描述
+	Tags        []string               `json:"tags,omitempty"`        // 会话标签
+	Statistics  SessionStats           `json:"statistics"`            // 会话统计
+
 	// Agent 实例（每个会话独立的 Agent）
 	Agent *core.Agent `json:"-"`
 
 	// 消息历史（内存缓存）
 	Messages []Message `json:"-"`
+
+	// 工具执行记录（独立于 Agent）
+	ToolExecutions []ToolExecution `json:"-"`
 
 	// 元数据
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
@@ -60,6 +78,17 @@ type Session struct {
 
 	// 取消上下文
 	cancel context.CancelFunc
+}
+
+// ToolExecution 工具执行记录
+type ToolExecution struct {
+	ID        string                 `json:"id"`
+	Tool      string                 `json:"tool"`
+	Arguments string                 `json:"arguments"`
+	Result    string                 `json:"result"`
+	Success   bool                   `json:"success"`
+	Timestamp int64                  `json:"timestamp"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // NewSession 创建新会话
@@ -74,10 +103,16 @@ func NewSession(id string, name string, agentMode AgentMode, agent *core.Agent) 
 		Status:    SessionActive,
 		CreatedAt: now,
 		UpdatedAt: now,
-		Agent:     agent,
-		Messages:  make([]Message, 0, 100),
-		Metadata:  make(map[string]interface{}),
-		cancel:    cancel,
+		Description: "",
+		Tags:     make([]string, 0),
+		Statistics: SessionStats{
+			LastActiveAt: now,
+		},
+		Agent:          agent,
+		Messages:       make([]Message, 0, 100),
+		ToolExecutions: make([]ToolExecution, 0, 100),
+		Metadata:       make(map[string]interface{}),
+		cancel:         cancel,
 	}
 }
 
@@ -88,6 +123,20 @@ func (s *Session) AddMessage(msg Message) {
 
 	s.Messages = append(s.Messages, msg)
 	s.UpdatedAt = time.Now().Unix()
+
+	// 更新统计信息
+	s.Statistics.MessageCount++
+	s.Statistics.LastActiveAt = s.UpdatedAt
+
+	switch msg.Role {
+	case "user":
+		s.Statistics.UserMsgCount++
+	case "assistant":
+		s.Statistics.AssistantMsgCount++
+	}
+
+	// 估算 token 使用（简单估算：中文字符数 + 英文单词数 * 1.3）
+	s.Statistics.TokenUsed += estimateTokens(msg.Content)
 }
 
 // GetMessages 获取会话的所有消息
@@ -205,4 +254,133 @@ func (s *Session) GetAgent() *core.Agent {
 	defer s.mu.RUnlock()
 
 	return s.Agent
+}
+
+// SetDescription 设置会话描述
+func (s *Session) SetDescription(description string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.Description = description
+	s.UpdatedAt = time.Now().Unix()
+}
+
+// GetDescription 获取会话描述
+func (s *Session) GetDescription() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.Description
+}
+
+// AddTag 添加标签
+func (s *Session) AddTag(tag string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, t := range s.Tags {
+		if t == tag {
+			return // 标签已存在
+		}
+	}
+
+	s.Tags = append(s.Tags, tag)
+	s.UpdatedAt = time.Now().Unix()
+}
+
+// RemoveTag 移除标签
+func (s *Session) RemoveTag(tag string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i, t := range s.Tags {
+		if t == tag {
+			s.Tags = append(s.Tags[:i], s.Tags[i+1:]...)
+			s.UpdatedAt = time.Now().Unix()
+			return
+		}
+	}
+}
+
+// GetTags 获取所有标签
+func (s *Session) GetTags() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	tags := make([]string, len(s.Tags))
+	copy(tags, s.Tags)
+	return tags
+}
+
+// GetStatistics 获取统计信息
+func (s *Session) GetStatistics() SessionStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.Statistics
+}
+
+// RecordToolExecution 记录工具执行
+func (s *Session) RecordToolExecution(execution ToolExecution) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.ToolExecutions = append(s.ToolExecutions, execution)
+	s.Statistics.ToolCallCount++
+	s.Statistics.LastActiveAt = time.Now().Unix()
+	s.UpdatedAt = s.Statistics.LastActiveAt
+}
+
+// GetToolExecutions 获取工具执行记录
+func (s *Session) GetToolExecutions() []ToolExecution {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	executions := make([]ToolExecution, len(s.ToolExecutions))
+	copy(executions, s.ToolExecutions)
+	return executions
+}
+
+// SetStatus 设置会话状态
+func (s *Session) SetStatus(status SessionStatus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.Status = status
+	s.UpdatedAt = time.Now().Unix()
+}
+
+// estimateTokens 估算文本的 token 数量
+func estimateTokens(text string) int64 {
+	if len(text) == 0 {
+		return 0
+	}
+
+	// 简单估算：中文字符 = 1 token，英文单词 = 1.3 tokens
+	// 这是一个粗略估计，实际 token 数量取决于分词器
+	total := 0
+	chineseChars := 0
+	englishWords := 0
+
+	inWord := false
+	for _, r := range text {
+		if r >= 0x4e00 && r <= 0x9fff {
+			// 中文字符
+			chineseChars++
+		} else if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '\'' {
+			// 英文字符
+			if !inWord {
+				englishWords++
+				inWord = true
+			}
+		} else {
+			// 其他字符
+			inWord = false
+		}
+	}
+
+	// 计算 token 数
+	total = chineseChars + int(float64(englishWords)*1.3)
+
+	return int64(total)
 }

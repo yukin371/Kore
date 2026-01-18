@@ -780,3 +780,339 @@ type CancelParams struct {
 // Shutdown
 type ShutdownParams struct {}
 type ShutdownResult struct {}
+
+// Formatting
+
+type DocumentFormattingParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Options      FormattingOptions      `json:"options"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type DocumentRangeFormattingParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Range        Range                  `json:"range"`
+	Options      FormattingOptions      `json:"options"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type FormattingOptions struct {
+	TabSize                int               `json:"tabSize"`
+	InsertSpaces           bool              `json:"insertSpaces"`
+	TrimTrailingWhitespace bool              `json:"trimTrailingWhitespace,omitempty"`
+	InsertFinalNewline     bool              `json:"insertFinalNewline,omitempty"`
+	TrimFinalNewlines      bool              `json:"trimFinalNewlines,omitempty"`
+	KeyValueOptions        map[string]string `json:"-"`
+}
+
+type FormattingOptionsRaw struct {
+	TabSize                int               `json:"tabSize"`
+	InsertSpaces           bool              `json:"insertSpaces"`
+	TrimTrailingWhitespace bool              `json:"trimTrailingWhitespace,omitempty"`
+	InsertFinalNewline     bool              `json:"insertFinalNewline,omitempty"`
+	TrimFinalNewlines      bool              `json:"trimFinalNewlines,omitempty"`
+}
+
+func (fo FormattingOptions) MarshalJSON() ([]byte, error) {
+	aux := FormattingOptionsRaw{
+		TabSize:                fo.TabSize,
+		InsertSpaces:           fo.InsertSpaces,
+		TrimTrailingWhitespace: fo.TrimTrailingWhitespace,
+		InsertFinalNewline:     fo.InsertFinalNewline,
+		TrimFinalNewlines:      fo.TrimFinalNewlines,
+	}
+	if fo.KeyValueOptions != nil {
+		// Marshal additional options inline
+		data, err := marshalJSON(aux)
+		if err != nil {
+			return nil, err
+		}
+		var m map[string]interface{}
+		if err := unmarshalJSON(data, &m); err != nil {
+			return nil, err
+		}
+		for k, v := range fo.KeyValueOptions {
+			m[k] = v
+		}
+		return marshalJSON(m)
+	}
+	return marshalJSON(aux)
+}
+
+// Document Symbol
+
+type DocumentSymbolParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type DocumentSymbol struct {
+	Name           string             `json:"name"`
+	Detail         string             `json:"detail,omitempty"`
+	Kind           int                `json:"kind"`
+	Tags           []int              `json:"tags,omitempty"`
+	Deprecated     bool               `json:"deprecated,omitempty"`
+	Range          Range              `json:"range"`
+	SelectionRange Range              `json:"selectionRange"`
+	Children       []DocumentSymbol   `json:"children,omitempty"`
+}
+
+type SymbolKind int
+
+const (
+	SymbolKindFile SymbolKind = 1 + iota
+	SymbolKindModule
+	SymbolKindNamespace
+	SymbolKindPackage
+	SymbolKindClass
+	SymbolKindMethod
+	SymbolKindProperty
+	SymbolKindField
+	SymbolKindConstructor
+	SymbolKindEnum
+	SymbolKindInterface
+	SymbolKindFunction
+	SymbolKindVariable
+	SymbolKindConstant
+	SymbolKindString
+	SymbolKindNumber
+	SymbolKindBoolean
+	SymbolKindArray
+	SymbolKindObject
+	SymbolKindKey
+	SymbolKindNull
+	SymbolKindEnumMember
+	SymbolKindStruct
+	SymbolKindEvent
+	SymbolKindOperator
+	SymbolKindTypeParameter
+)
+
+// Workspace Symbol
+
+type WorkspaceSymbolParams struct {
+	Query string `json:"query"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type WorkspaceSymbol struct {
+	Name          string       `json:"name"`
+	Kind          int          `json:"kind,omitempty"`
+	Tags          []int        `json:"tags,omitempty"`
+	ContainerName string       `json:"containerName,omitempty"`
+	Location      interface{}  `json:"location"` // Location | { uri: string, range: Range }
+}
+
+// Rename
+
+type RenameParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	NewName      string                 `json:"newName"`
+	WorkDoneProgressParams
+}
+
+type PrepareRenameParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	WorkDoneProgressParams
+}
+
+type PrepareRenameResult struct {
+	Range      Range       `json:"range"`
+	Start      interface{} `json:"start,omitempty"` // Range | { range: Range, placeholder: string }
+	Placeholder string     `json:"placeholder,omitempty"`
+}
+
+type WorkspaceEdit struct {
+	DocumentChanges []interface{} `json:"documentChanges,omitempty"` // TextDocumentEdit[] | (TextDocumentEdit | CreateFile | RenameFile | DeleteFile)[]
+	Changes        map[string][]TextEdit `json:"changes,omitempty"`
+	ChangeAnnotations map[string]ChangeAnnotation `json:"changeAnnotations,omitempty"`
+}
+
+type TextDocumentEdit struct {
+	TextDocument   OptionalVersionedTextDocumentIdentifier `json:"textDocument"`
+	Edits          []TextEditOrAnnotation `json:"edits"`
+}
+
+type TextEditOrAnnotation interface{}
+
+type ChangeAnnotation struct {
+	Label            string `json:"label"`
+	NeedsConfirmation bool   `json:"needsConfirmation,omitempty"`
+	Description       string `json:"description,omitempty"`
+}
+
+// Code Action
+
+type CodeActionParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Range        Range                  `json:"range"`
+	Context      CodeActionContext      `json:"context"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type CodeActionContext struct {
+	Diagnostics []Diagnostic `json:"diagnostics"`
+	Only        []string     `json:"only,omitempty"`
+	TriggerKind  int          `json:"triggerKind,omitempty"`
+}
+
+type CodeActionTriggerKind int
+
+const (
+	CodeActionTriggerKindInvoked CodeActionTriggerKind = 1 + iota
+	CodeActionTriggerKindAutomatic
+)
+
+type CodeAction struct {
+	Title       string           `json:"title"`
+	Kind        string           `json:"kind,omitempty"`
+	Tags        []string         `json:"tags,omitempty"`
+	Diagnostics []Diagnostic     `json:"diagnostics,omitempty"`
+	IsPreferred bool             `json:"isPreferred,omitempty"`
+	Disabled    *DisabledReason  `json:"disabled,omitempty"`
+	Edit        *WorkspaceEdit   `json:"edit,omitempty"`
+	Command     *Command         `json:"command,omitempty"`
+	Data        interface{}      `json:"data,omitempty"`
+}
+
+type DisabledReason struct {
+	Reason string `json:"reason"`
+}
+
+type CodeActionKind string
+
+const (
+	CodeActionKindEmpty                    CodeActionKind = ""
+	CodeActionKindQuickFix                 CodeActionKind = "quickfix"
+	CodeActionKindRefactor                 CodeActionKind = "refactor"
+	CodeActionKindRefactorExtract          CodeActionKind = "refactor.extract"
+	CodeActionKindRefactorInline           CodeActionKind = "refactor.inline"
+	CodeActionKindRefactorRewrite          CodeActionKind = "refactor.rewrite"
+	CodeActionKindSource                   CodeActionKind = "source"
+	CodeActionKindSourceOrganizeImports    CodeActionKind = "source.organizeImports"
+	CodeActionKindSourceFixAll             CodeActionKind = "source.fixAll"
+)
+
+// Code Lens
+
+type CodeLensParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type CodeLens struct {
+	Range   Range    `json:"range"`
+	Command *Command `json:"command,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+type CodeLensResolveOptions struct {
+	Command *Command `json:"command,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// Inlay Hint
+
+type InlayHintParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Range        Range                  `json:"range"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type InlayHint struct {
+	Position     Position            `json:"position"`
+	Label        []InlayHintLabelPart `json:"label"`
+	Kind         string              `json:"kind,omitempty"`
+	TextEdits    []TextEdit          `json:"textEdits,omitempty"`
+	Tooltip      interface{}         `json:"tooltip,omitempty"` // string | MarkupContent
+	PaddingLeft  bool                `json:"paddingLeft,omitempty"`
+	PaddingRight bool                `json:"paddingRight,omitempty"`
+	Data         interface{}         `json:"data,omitempty"`
+}
+
+type InlayHintLabelPart struct {
+	Value    string     `json:"value"`
+	Tooltip  interface{} `json:"tooltip,omitempty"` // string | MarkupContent
+	Location *Location  `json:"location,omitempty"`
+	Command  *Command   `json:"command,omitempty"`
+}
+
+type InlayHintKind string
+
+const (
+	InlayHintKindType     InlayHintKind = "type"
+	InlayHintKindParameter InlayHintKind = "parameter"
+)
+
+// Signature Help
+
+type SignatureHelpParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	WorkDoneProgressParams
+	Context      *SignatureHelpContext  `json:"context,omitempty"`
+}
+
+type SignatureHelpContext struct {
+	TriggerKind      int                `json:"triggerKind"`
+	TriggerCharacter string             `json:"triggerCharacter,omitempty"`
+	IsRetrigger      bool               `json:"isRetrigger,omitempty"`
+	ActiveSignatureHelp *SignatureHelp  `json:"activeSignatureHelp,omitempty"`
+}
+
+type SignatureHelpTriggerKind int
+
+const (
+	SignatureHelpTriggerKindInvoked SignatureHelpTriggerKind = 1 + iota
+	SignatureHelpTriggerKindTriggerCharacter
+	SignatureHelpTriggerKindContentChange
+)
+
+type SignatureHelp struct {
+	Signatures      []SignatureInformation `json:"signatures"`
+	ActiveSignature int                    `json:"activeSignature,omitempty"`
+	ActiveParameter int                    `json:"activeParameter,omitempty"`
+}
+
+type SignatureInformation struct {
+	Label         string                       `json:"label"`
+	Documentation interface{}                  `json:"documentation,omitempty"`
+	Parameters    []ParameterInformation       `json:"parameters,omitempty"`
+	ActiveParameter *int                       `json:"activeParameter,omitempty"`
+}
+
+type ParameterInformation struct {
+	Label         interface{} `json:"label"` // string | [uint, uint]
+	Documentation interface{} `json:"documentation,omitempty"`
+}
+
+// Document Highlight
+
+type DocumentHighlightParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	WorkDoneProgressParams
+	PartialResultParams
+}
+
+type DocumentHighlight struct {
+	Range  Range `json:"range"`
+	Kind   int   `json:"kind,omitempty"`
+}
+
+type DocumentHighlightKind int
+
+const (
+	DocumentHighlightKindText DocumentHighlightKind = 1 + iota
+	DocumentHighlightKindRead
+	DocumentHighlightKindWrite
+)

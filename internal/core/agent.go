@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yukin/kore/internal/eventbus"
 )
 
 // UIInterface defines the abstract interface for user interaction
@@ -50,6 +52,8 @@ type Agent struct {
 	// 【新增】工具调用历史和文件缓存
 	toolHistory *ToolCallHistory
 	fileCache   *FileCache
+	// 【新增】事件总线
+	EventBus *eventbus.EventBus
 }
 
 // Config holds agent configuration
@@ -64,6 +68,16 @@ type Config struct {
 
 // NewAgent creates a new agent instance
 func NewAgent(ui UIInterface, llm LLMProvider, tools ToolExecutor, projectRoot string) *Agent {
+	// 初始化事件总线
+	busConfig := &eventbus.Config{
+		QueueSize:      1000,
+		DefaultBuffer:  100,
+		EventTimeout:   5 * time.Second,
+		EnableStats:    true,
+		MaxRetries:     3,
+		RetryDelay:     100 * time.Millisecond,
+	}
+
 	return &Agent{
 		UI:          ui,
 		ContextMgr:  NewContextManager(projectRoot, 8000), // 8K token budget
@@ -74,11 +88,16 @@ func NewAgent(ui UIInterface, llm LLMProvider, tools ToolExecutor, projectRoot s
 		// 【新增】初始化工具调用历史和文件缓存
 		toolHistory: NewToolCallHistory(),
 		fileCache:   NewFileCache(),
+		// 【新增】初始化事件总线
+		EventBus: eventbus.NewEventBus(busConfig),
 	}
 }
 
 // Run executes the agent main loop with ReAct pattern
 func (a *Agent) Run(ctx context.Context, userMessage string) error {
+	// 【新增】发布消息添加事件
+	a.EventBus.PublishMessageAdded("", "user", userMessage)
+
 	// Build and inject system prompt with context (must be first)
 	projectCtx, err := a.ContextMgr.BuildContext(ctx)
 	if err != nil {
@@ -102,6 +121,8 @@ func (a *Agent) Run(ctx context.Context, userMessage string) error {
 
 		// 【状态通知】AI 开始思考
 		a.UI.StartThinking()
+		// 【新增】发布 Agent 思考事件
+		a.EventBus.PublishAgentThinking("")
 
 		// Call LLM
 		req := a.History.BuildRequest(a.Config.LLM.MaxTokens, a.Config.LLM.Temperature)
@@ -122,9 +143,13 @@ func (a *Agent) Run(ctx context.Context, userMessage string) error {
 				// 【状态通知】开始生成内容
 				if !hasContent {
 					a.UI.StopThinking()
+					// 【新增】发布 Agent 空闲事件
+					a.EventBus.PublishAgentIdle("")
 					hasContent = true
 				}
 				a.UI.SendStream(event.Content)
+				// 【新增】发布消息流式事件
+				a.EventBus.PublishMessageStreaming("", event.Content)
 				contentBuilder.WriteString(event.Content)
 
 			case EventToolCall:
@@ -189,6 +214,12 @@ func (a *Agent) executeToolsSequential(ctx context.Context, toolCalls []*ToolCal
 		// 【新增】发送工具执行开始状态
 		a.notifyToolExecutionStart(call.Name, call.Arguments)
 
+		// 【新增】发布工具开始事件
+		var argsMap map[string]interface{}
+		if err := json.Unmarshal([]byte(call.Arguments), &argsMap); err == nil {
+			a.EventBus.PublishToolStart("", call.Name, argsMap)
+		}
+
 		// 【新增】检查智能文件缓存（仅对 read_file）
 		if call.Name == "read_file" {
 			var args map[string]interface{}
@@ -225,6 +256,9 @@ func (a *Agent) executeToolsSequential(ctx context.Context, toolCalls []*ToolCal
 		a.UI.ShowStatus(fmt.Sprintf("Running %s...", call.Name))
 		result, err := a.Tools.Execute(ctx, *call)
 
+		// 【新增】发布工具输出事件
+		a.EventBus.PublishToolOutput("", call.Name, result)
+
 		// 【新增】记录工具调用历史
 		a.toolHistory.Record(ToolCallRecord{
 			ID:        call.ID,
@@ -250,6 +284,13 @@ func (a *Agent) executeToolsSequential(ctx context.Context, toolCalls []*ToolCal
 
 		// 【新增】发送工具执行结果状态
 		a.notifyToolExecutionEnd(err)
+
+		// 【新增】发布工具完成/错误事件
+		if err != nil {
+			a.EventBus.PublishToolError("", call.Name, err.Error())
+		} else {
+			a.EventBus.PublishToolComplete("", call.Name)
+		}
 
 		// Add result to history - 必须是JSON格式
 		var output string
@@ -310,6 +351,12 @@ func (a *Agent) executeToolsParallel(ctx context.Context, toolCalls []*ToolCall)
 			// 【新增】发送工具执行开始状态
 			a.notifyToolExecutionStart(toolCall.Name, toolCall.Arguments)
 
+			// 【新增】发布工具开始事件
+			var argsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(toolCall.Arguments), &argsMap); err == nil {
+				a.EventBus.PublishToolStart("", toolCall.Name, argsMap)
+			}
+
 			// 【新增】检查智能文件缓存（仅对 read_file）
 			var result string
 			var execErr error
@@ -343,6 +390,14 @@ func (a *Agent) executeToolsParallel(ctx context.Context, toolCalls []*ToolCall)
 
 			// 【新增】发送工具执行结果状态
 			a.notifyToolExecutionEnd(execErr)
+
+			// 【新增】发布工具输出和完成事件
+			a.EventBus.PublishToolOutput("", toolCall.Name, result)
+			if execErr != nil {
+				a.EventBus.PublishToolError("", toolCall.Name, execErr.Error())
+			} else {
+				a.EventBus.PublishToolComplete("", toolCall.Name)
+			}
 
 			// 【新增】记录工具调用历史
 			a.toolHistory.Record(ToolCallRecord{

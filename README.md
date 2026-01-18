@@ -90,7 +90,25 @@ kore chat
 
 ---
 
-## 📦 安装
+## ✨ 核心特性
+
+- 🤖 **AI 驱动**: 集成 OpenAI API 和 Ollama，提供智能代码辅助
+- 🎨 **混合界面**: 支持 CLI、TUI（终端界面）和 GUI（计划中）
+- 🔧 **工具执行**: 安全的文件操作和命令执行，带确认机制
+- 📁 **上下文管理**: 智能项目上下文加载，动态文件浏览
+- 🛡️ **安全沙箱**: 内置安全层，防止恶意操作
+- 🔒 **环境管理**: 安全的命令执行和文件操作，支持虚拟文件系统
+- 🚀 **可扩展**: 基于插件的工具系统，支持自定义工作流
+- ⚡ **并行工具调用**: 支持多工具并行执行，提升效率
+- 📊 **实时状态指示**: TUI 界面提供动画状态反馈
+- 🌐 **LSP 集成**: 完整的 Language Server Protocol 支持，提供 IDE 级别的代码理解
+- 👥 **多会话管理**: 支持多个独立的对话会话并行运行
+- 📡 **实时事件流**: 背压感知的事件总线，支持实时流式交互
+- 🏗️ **Client/Server 架构**: gRPC 通信，支持远程控制和多种客户端
+- 💾 **持久化存储**: SQLite 数据库，支持可选加密
+- 🔌 **插件系统**: 可扩展的工具调用链和权限模型
+
+---
 
 ## 📦 安装
 
@@ -304,31 +322,66 @@ Kore 采用 **Agent-Centric（代理中心）** 架构，通过 UI 抽象层实�
 - [x] 流式命令输出
 - [x] 完整的测试覆盖
 
-### 🚧 Phase 3: LSP Manager（计划中）
+### ✅ Phase 3: LSP Manager（已完成）
 
-- [ ] JSON-RPC 2.0 通信
-- [ ] LSP 客户端基础
-- [ ] 语言特性实现（补全、定义、引用）
-- [ ] 诊断功能
-- [ ] LSP Manager 单例
-- [ ] 语言支持（Go, Python, TypeScript）
+- [x] JSON-RPC 2.0 通信层
+- [x] LSP 客户端实现（Initialize, Shutdown, DidOpen, DidChange）
+- [x] 语言特性实现（Complete, Definition, References, Hover, Rename）
+- [x] 诊断功能（PublishDiagnostics）
+- [x] LSP Manager 单例模式
+- [x] 语言支持（Go/gopls, Python/pyright, TypeScript/tsserver）
+- [x] LSP 工具集成
 
-### 📋 Phase 3: 用户增强（计划中）
+### ✅ Phase 4: Session Manager（已完成）
 
-- [ ] 配置文件热重载
-- [ ] 自定义工具注册
-- [ ] 插件系统
-- [ ] 多会话管理
-- [ ] 工作流模板
-- [ ] 命令别名系统
+- [x] 会话数据结构（ID, 名称, Agent 模式, 状态）
+- [x] 会话管理器（创建、获取、列表、切换、关闭）
+- [x] SQLite 存储适配器
+- [x] 会话持久化（元数据 + 消息历史）
+- [x] 可选加密（AES-GCM）
+- [x] 导入/导出功能
+- [x] 会话搜索
 
-### 🎨 Phase 4: GUI 界面（计划中）
+### ✅ Phase 5: Event System（已完成）
 
-- [ ] Wails 框架集成
-- [ ] React 前端
-- [ ] Monaco Editor 集成
-- [ ] 终端模拟器（xterm.js）
-- [ ] 跨平台支持
+- [x] Event Bus 核心（发布/订阅模式）
+- [x] 背压处理（队列、超时、缓冲）
+- [x] 事件类型定义（会话、消息、Agent、工具、UI）
+- [x] 异步事件分发
+- [x] 全局订阅支持
+- [x] 便捷函数（PublishSessionCreated, PublishMessageAdded 等）
+
+### ✅ Phase 6: gRPC Server/Client（已完成）
+
+- [x] gRPC 服务器实现（启动、停止、优雅关闭）
+- [x] gRPC 客户端实现（连接、自动重连）
+- [x] 会话管理 RPC（CreateSession, GetSession, ListSessions, CloseSession）
+- [x] 消息流 RPC（SendMessage 双向流）
+- [x] 命令执行 RPC（ExecuteCommand 流式输出）
+- [x] LSP 服务 RPC（Complete, Definition, Hover, References, Rename, Diagnostics）
+- [x] 虚拟文档 RPC（CreateVirtualDocument, UpdateVirtualDocument, CloseVirtualDocument）
+- [x] 事件订阅 RPC（SubscribeEvents 流式推送）
+- [x] Protocol Buffers 定义
+
+### 🚧 Phase 7: GUI 工作台（计划中）
+
+- [ ] GUI 客户端框架（Wails/React）
+- [ ] 工具面板与能力中心
+- [ ] 创作工作区
+- [ ] CLI 核心联动
+
+### 📋 Phase 8: TUI 客户端增强（计划中）
+
+- [ ] 多标签页界面
+- [ ] 完整的用户界面
+- [ ] 高级交互功能
+
+### 🎨 Phase 9: 测试与优化（计划中）
+
+- [ ] 单元测试覆盖率 > 80%
+- [ ] 集成测试
+- [ ] 性能优化
+- [ ] 文档完善
 
 ---
 

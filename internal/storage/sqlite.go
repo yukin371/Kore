@@ -59,6 +59,9 @@ func initSchema(db *sql.DB) error {
 		status INTEGER NOT NULL,
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL,
+		description TEXT,
+		tags TEXT,
+		statistics TEXT,
 		metadata TEXT
 	);
 
@@ -80,13 +83,39 @@ func initSchema(db *sql.DB) error {
 	`
 
 	_, err := db.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 迁移：添加新字段（如果表已存在）
+	migration := `
+	-- 检查并添加新字段
+	ALTER TABLE sessions ADD COLUMN description TEXT;
+	ALTER TABLE sessions ADD COLUMN tags TEXT;
+	ALTER TABLE sessions ADD COLUMN statistics TEXT;
+	`
+
+	// 执行迁移（忽略错误，因为字段可能已存在）
+	db.Exec(migration)
+
+	return nil
 }
 
 // SaveSession 保存会话元数据
 func (s *SQLiteStore) SaveSession(ctx context.Context, sess *session.Session) error {
-	// 使用线程安全的方法获取数据
-	id, name, agentMode, status, createdAt, updatedAt, metadata := sess.GetDataForStorage()
+	// 获取会话数据
+	sess.mu.RLock()
+	id := sess.ID
+	name := sess.Name
+	agentMode := sess.AgentMode
+	status := sess.Status
+	createdAt := sess.CreatedAt
+	updatedAt := sess.UpdatedAt
+	description := sess.Description
+	tags := sess.Tags
+	statistics := sess.Statistics
+	metadata := sess.Metadata
+	sess.mu.RUnlock()
 
 	// 序列化元数据
 	var metadataJSON []byte
@@ -98,21 +127,42 @@ func (s *SQLiteStore) SaveSession(ctx context.Context, sess *session.Session) er
 		}
 	}
 
+	// 序列化标签
+	var tagsJSON []byte
+	if len(tags) > 0 {
+		var err error
+		tagsJSON, err = json.Marshal(tags)
+		if err != nil {
+			return fmt.Errorf("failed to marshal tags: %w", err)
+		}
+	}
+
+	// 序列化统计信息
+	var statsJSON []byte
+	var err error
+	statsJSON, err = json.Marshal(statistics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal statistics: %w", err)
+	}
+
 	// 准备 SQL
 	query := `
 		INSERT OR REPLACE INTO sessions
-		(id, name, agent_mode, status, created_at, updated_at, metadata)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		(id, name, agent_mode, status, created_at, updated_at, description, tags, statistics, metadata)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// 执行
-	_, err := s.db.ExecContext(ctx, query,
+	_, err = s.db.ExecContext(ctx, query,
 		id,
 		name,
 		string(agentMode),
 		status,
 		createdAt,
 		updatedAt,
+		description,
+		string(tagsJSON),
+		string(statsJSON),
 		string(metadataJSON),
 	)
 
@@ -126,7 +176,7 @@ func (s *SQLiteStore) SaveSession(ctx context.Context, sess *session.Session) er
 // LoadSession 加载会话元数据
 func (s *SQLiteStore) LoadSession(ctx context.Context, sessionID string) (*session.Session, error) {
 	query := `
-		SELECT id, name, agent_mode, status, created_at, updated_at, metadata
+		SELECT id, name, agent_mode, status, created_at, updated_at, description, tags, statistics, metadata
 		FROM sessions
 		WHERE id = ?
 	`
@@ -136,14 +186,31 @@ func (s *SQLiteStore) LoadSession(ctx context.Context, sessionID string) (*sessi
 	var id, name, agentModeStr string
 	var status session.SessionStatus
 	var createdAt, updatedAt int64
-	var metadataJSON sql.NullString
+	var description string
+	var tagsJSON, statsJSON, metadataJSON sql.NullString
 
-	err := row.Scan(&id, &name, &agentModeStr, &status, &createdAt, &updatedAt, &metadataJSON)
+	err := row.Scan(&id, &name, &agentModeStr, &status, &createdAt, &updatedAt, &description, &tagsJSON, &statsJSON, &metadataJSON)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("session not found: %s", sessionID)
 		}
 		return nil, fmt.Errorf("failed to load session: %w", err)
+	}
+
+	// 反序列化标签
+	var tags []string
+	if tagsJSON.Valid && tagsJSON.String != "" {
+		if err := json.Unmarshal([]byte(tagsJSON.String), &tags); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
+		}
+	}
+
+	// 反序列化统计信息
+	var statistics session.SessionStats
+	if statsJSON.Valid && statsJSON.String != "" {
+		if err := json.Unmarshal([]byte(statsJSON.String), &statistics); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal statistics: %w", err)
+		}
 	}
 
 	// 反序列化元数据
@@ -156,14 +223,17 @@ func (s *SQLiteStore) LoadSession(ctx context.Context, sessionID string) (*sessi
 
 	// 创建会话对象（注意：Agent 需要外部设置）
 	sess := &session.Session{
-		ID:        id,
-		Name:      name,
-		AgentMode: session.AgentMode(agentModeStr),
-		Status:    status,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Metadata:  metadata,
-		Messages:  make([]session.Message, 0),
+		ID:         id,
+		Name:       name,
+		AgentMode:  session.AgentMode(agentModeStr),
+		Status:     status,
+		CreatedAt:  createdAt,
+		UpdatedAt:  updatedAt,
+		Description: description,
+		Tags:       tags,
+		Statistics: statistics,
+		Metadata:   metadata,
+		Messages:   make([]session.Message, 0),
 	}
 
 	return sess, nil
@@ -172,7 +242,7 @@ func (s *SQLiteStore) LoadSession(ctx context.Context, sessionID string) (*sessi
 // ListSessions 列出所有会话
 func (s *SQLiteStore) ListSessions(ctx context.Context) ([]*session.Session, error) {
 	query := `
-		SELECT id, name, agent_mode, status, created_at, updated_at, metadata
+		SELECT id, name, agent_mode, status, created_at, updated_at, description, tags, statistics, metadata
 		FROM sessions
 		ORDER BY updated_at DESC
 	`
@@ -188,10 +258,27 @@ func (s *SQLiteStore) ListSessions(ctx context.Context) ([]*session.Session, err
 		var id, name, agentModeStr string
 		var status session.SessionStatus
 		var createdAt, updatedAt int64
-		var metadataJSON sql.NullString
+		var description string
+		var tagsJSON, statsJSON, metadataJSON sql.NullString
 
-		if err := rows.Scan(&id, &name, &agentModeStr, &status, &createdAt, &updatedAt, &metadataJSON); err != nil {
+		if err := rows.Scan(&id, &name, &agentModeStr, &status, &createdAt, &updatedAt, &description, &tagsJSON, &statsJSON, &metadataJSON); err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
+		}
+
+		// 反序列化标签
+		var tags []string
+		if tagsJSON.Valid && tagsJSON.String != "" {
+			if err := json.Unmarshal([]byte(tagsJSON.String), &tags); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
+			}
+		}
+
+		// 反序列化统计信息
+		var statistics session.SessionStats
+		if statsJSON.Valid && statsJSON.String != "" {
+			if err := json.Unmarshal([]byte(statsJSON.String), &statistics); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal statistics: %w", err)
+			}
 		}
 
 		// 反序列化元数据
@@ -203,14 +290,17 @@ func (s *SQLiteStore) ListSessions(ctx context.Context) ([]*session.Session, err
 		}
 
 		sess := &session.Session{
-			ID:        id,
-			Name:      name,
-			AgentMode: session.AgentMode(agentModeStr),
-			Status:    status,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
-			Metadata:  metadata,
-			Messages:  make([]session.Message, 0),
+			ID:         id,
+			Name:       name,
+			AgentMode:  session.AgentMode(agentModeStr),
+			Status:     status,
+			CreatedAt:  createdAt,
+			UpdatedAt:  updatedAt,
+			Description: description,
+			Tags:       tags,
+			Statistics: statistics,
+			Metadata:   metadata,
+			Messages:   make([]session.Message, 0),
 		}
 
 		sessions = append(sessions, sess)
@@ -345,19 +435,20 @@ func (s *SQLiteStore) LoadMessages(ctx context.Context, sessionID string) ([]ses
 
 // SearchSessions 搜索会话
 func (s *SQLiteStore) SearchSessions(ctx context.Context, query string) ([]*session.Session, error) {
-	// 简单的全文搜索：搜索会话名称和消息内容
+	// 搜索会话名称、描述和消息内容
 	sqlQuery := `
-		SELECT DISTINCT s.id, s.name, s.agent_mode, s.status, s.created_at, s.updated_at, s.metadata
+		SELECT DISTINCT s.id, s.name, s.agent_mode, s.status, s.created_at, s.updated_at, s.description, s.tags, s.statistics, s.metadata
 		FROM sessions s
 		LEFT JOIN messages m ON s.id = m.session_id
 		WHERE s.name LIKE ?
+		   OR s.description LIKE ?
 		   OR m.content LIKE ?
 		ORDER BY s.updated_at DESC
 	`
 
 	searchPattern := "%" + query + "%"
 
-	rows, err := s.db.QueryContext(ctx, sqlQuery, searchPattern, searchPattern)
+	rows, err := s.db.QueryContext(ctx, sqlQuery, searchPattern, searchPattern, searchPattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search sessions: %w", err)
 	}
@@ -368,10 +459,27 @@ func (s *SQLiteStore) SearchSessions(ctx context.Context, query string) ([]*sess
 		var id, name, agentModeStr string
 		var status session.SessionStatus
 		var createdAt, updatedAt int64
-		var metadataJSON sql.NullString
+		var description string
+		var tagsJSON, statsJSON, metadataJSON sql.NullString
 
-		if err := rows.Scan(&id, &name, &agentModeStr, &status, &createdAt, &updatedAt, &metadataJSON); err != nil {
+		if err := rows.Scan(&id, &name, &agentModeStr, &status, &createdAt, &updatedAt, &description, &tagsJSON, &statsJSON, &metadataJSON); err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
+		}
+
+		// 反序列化标签
+		var tags []string
+		if tagsJSON.Valid && tagsJSON.String != "" {
+			if err := json.Unmarshal([]byte(tagsJSON.String), &tags); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
+			}
+		}
+
+		// 反序列化统计信息
+		var statistics session.SessionStats
+		if statsJSON.Valid && statsJSON.String != "" {
+			if err := json.Unmarshal([]byte(statsJSON.String), &statistics); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal statistics: %w", err)
+			}
 		}
 
 		// 反序列化元数据
@@ -383,14 +491,17 @@ func (s *SQLiteStore) SearchSessions(ctx context.Context, query string) ([]*sess
 		}
 
 		sess := &session.Session{
-			ID:        id,
-			Name:      name,
-			AgentMode: session.AgentMode(agentModeStr),
-			Status:    status,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
-			Metadata:  metadata,
-			Messages:  make([]session.Message, 0),
+			ID:         id,
+			Name:       name,
+			AgentMode:  session.AgentMode(agentModeStr),
+			Status:     status,
+			CreatedAt:  createdAt,
+			UpdatedAt:  updatedAt,
+			Description: description,
+			Tags:       tags,
+			Statistics: statistics,
+			Metadata:   metadata,
+			Messages:   make([]session.Message, 0),
 		}
 
 		sessions = append(sessions, sess)

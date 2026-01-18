@@ -540,6 +540,380 @@ func (c *Client) GetDocument(uri string) (*Document, bool) {
 	return doc, ok
 }
 
+// Formatting formats the entire document
+func (c *Client) Formatting(ctx context.Context, uri string, options FormattingOptions) ([]TextEdit, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.DocumentFormattingProvider == nil {
+		return nil, fmt.Errorf("formatting not supported")
+	}
+
+	params := DocumentFormattingParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Options:      options,
+	}
+
+	var result []TextEdit
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/formatting", params, &result); err != nil {
+		return nil, fmt.Errorf("formatting request failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// RangeFormatting formats a specific range in the document
+func (c *Client) RangeFormatting(ctx context.Context, uri string, rng Range, options FormattingOptions) ([]TextEdit, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.DocumentRangeFormattingProvider == nil {
+		return nil, fmt.Errorf("range formatting not supported")
+	}
+
+	params := DocumentRangeFormattingParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Range:        rng,
+		Options:      options,
+	}
+
+	var result []TextEdit
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/rangeFormatting", params, &result); err != nil {
+		return nil, fmt.Errorf("range formatting request failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// DocumentSymbol returns symbols in the document
+func (c *Client) DocumentSymbol(ctx context.Context, uri string) ([]interface{}, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.DocumentSymbolProvider == nil {
+		return nil, fmt.Errorf("document symbol not supported")
+	}
+
+	params := DocumentSymbolParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	}
+
+	var result interface{}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/documentSymbol", params, &result); err != nil {
+		return nil, fmt.Errorf("document symbol request failed: %w", err)
+	}
+
+	// Handle both []DocumentSymbol and []SymbolInformation (deprecated)
+	switch v := result.(type) {
+	case []interface{}:
+		// Return the raw result which can be either DocumentSymbol[] or SymbolInformation[]
+		return v, nil
+	default:
+		return nil, fmt.Errorf("unexpected document symbol result type: %T", result)
+	}
+}
+
+// WorkspaceSymbol searches for symbols in the workspace
+func (c *Client) WorkspaceSymbol(ctx context.Context, query string) ([]WorkspaceSymbol, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.Workspace == nil {
+		return nil, fmt.Errorf("workspace symbol not supported")
+	}
+
+	params := WorkspaceSymbolParams{
+		Query: query,
+	}
+
+	var result []WorkspaceSymbol
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "workspace/symbol", params, &result); err != nil {
+		return nil, fmt.Errorf("workspace symbol request failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// PrepareRename checks if a rename can be performed at the given position
+func (c *Client) PrepareRename(ctx context.Context, uri string, pos Position) (*PrepareRenameResult, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	// Check if rename provider supports prepare
+	if renameProvider, ok := c.capabilities.RenameProvider.(map[string]interface{}); ok {
+		if prepareSupport, exists := renameProvider["prepareProvider"]; exists {
+			if ps, ok := prepareSupport.(bool); !ps || !ok {
+				return nil, fmt.Errorf("prepare rename not supported")
+			}
+		}
+	} else if c.capabilities.RenameProvider == nil {
+		return nil, fmt.Errorf("rename not supported")
+	}
+
+	params := PrepareRenameParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Position:     pos,
+	}
+
+	var result PrepareRenameResult
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/prepareRename", params, &result); err != nil {
+		return nil, fmt.Errorf("prepare rename request failed: %w", err)
+	}
+
+	return &result, nil
+}
+
+// Rename performs a rename operation
+func (c *Client) Rename(ctx context.Context, uri string, pos Position, newName string) (*WorkspaceEdit, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.RenameProvider == nil {
+		return nil, fmt.Errorf("rename not supported")
+	}
+
+	params := RenameParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Position:     pos,
+		NewName:      newName,
+	}
+
+	var result WorkspaceEdit
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/rename", params, &result); err != nil {
+		return nil, fmt.Errorf("rename request failed: %w", err)
+	}
+
+	return &result, nil
+}
+
+// CodeAction returns code actions for the given range
+func (c *Client) CodeAction(ctx context.Context, uri string, rng Range, diagnostics []Diagnostic, only []string) ([]CodeAction, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.CodeActionProvider == nil {
+		return nil, fmt.Errorf("code action not supported")
+	}
+
+	params := CodeActionParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Range:        rng,
+		Context: CodeActionContext{
+			Diagnostics: diagnostics,
+			Only:        only,
+		},
+	}
+
+	var result interface{}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/codeAction", params, &result); err != nil {
+		return nil, fmt.Errorf("code action request failed: %w", err)
+	}
+
+	// Handle Command[] | CodeAction[] | (Command | CodeAction)[]
+	switch v := result.(type) {
+	case []interface{}:
+		// Array of CodeAction or Command
+		var actions []CodeAction
+		for _, item := range v {
+			// Try to unmarshal as CodeAction
+			var action CodeAction
+			if err := unmarshalParams(item, &action); err == nil && action.Title != "" {
+				actions = append(actions, action)
+			}
+		}
+		return actions, nil
+	default:
+		return nil, fmt.Errorf("unexpected code action result type: %T", result)
+	}
+}
+
+// CodeLens returns code lenses for the document
+func (c *Client) CodeLens(ctx context.Context, uri string) ([]CodeLens, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.CodeLensProvider == nil {
+		return nil, fmt.Errorf("code lens not supported")
+	}
+
+	params := CodeLensParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+	}
+
+	var result []CodeLens
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/codeLens", params, &result); err != nil {
+		return nil, fmt.Errorf("code lens request failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// InlayHint returns inlay hints for the given range
+func (c *Client) InlayHint(ctx context.Context, uri string, rng Range) ([]InlayHint, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.InlayHintProvider == nil {
+		return nil, fmt.Errorf("inlay hint not supported")
+	}
+
+	params := InlayHintParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Range:        rng,
+	}
+
+	var result []InlayHint
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/inlayHint", params, &result); err != nil {
+		return nil, fmt.Errorf("inlay hint request failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// SignatureHelp returns signature help at the given position
+func (c *Client) SignatureHelp(ctx context.Context, uri string, pos Position) (*SignatureHelp, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.SignatureHelpProvider == nil {
+		return nil, fmt.Errorf("signature help not supported")
+	}
+
+	params := SignatureHelpParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Position:     pos,
+	}
+
+	var result SignatureHelp
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/signatureHelp", params, &result); err != nil {
+		return nil, fmt.Errorf("signature help request failed: %w", err)
+	}
+
+	return &result, nil
+}
+
+// DocumentHighlight returns document highlights for the given position
+func (c *Client) DocumentHighlight(ctx context.Context, uri string, pos Position) ([]DocumentHighlight, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return nil, fmt.Errorf("client not initialized")
+	}
+
+	if c.capabilities.DocumentHighlightProvider == nil {
+		return nil, fmt.Errorf("document highlight not supported")
+	}
+
+	params := DocumentHighlightParams{
+		TextDocument: TextDocumentIdentifier{URI: uri},
+		Position:     pos,
+	}
+
+	var result []DocumentHighlight
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.rpc.Request(ctx, "textDocument/documentHighlight", params, &result); err != nil {
+		return nil, fmt.Errorf("document highlight request failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// PublishDiagnostics sends a diagnostics notification
+func (c *Client) PublishDiagnostics(ctx context.Context, params PublishDiagnosticsParams) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.initialized {
+		return fmt.Errorf("client not initialized")
+	}
+
+	return c.rpc.Notify("textDocument/publishDiagnostics", params)
+}
+
 // Helper function to unmarshal parameters
 func unmarshalParams(params interface{}, v interface{}) error {
 	data, err := marshalJSON(params)

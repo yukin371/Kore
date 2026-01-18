@@ -96,6 +96,15 @@ func (h *ConversationHistory) Clear() {
 	h.messages = make([]Message, 0)
 }
 
+// ReplaceMessages replaces the entire message history.
+func (h *ConversationHistory) ReplaceMessages(messages []Message) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.messages = make([]Message, len(messages))
+	copy(h.messages, messages)
+}
+
 // Count returns the number of messages in the history
 func (h *ConversationHistory) Count() int {
 	h.mu.RLock()

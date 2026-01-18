@@ -202,6 +202,37 @@ func (m *Manager) CloseSession(ctx context.Context, sessionID string) error {
 	return nil
 }
 
+// DeleteSession 删除会话
+func (m *Manager) DeleteSession(ctx context.Context, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// 关闭会话
+	if err := session.Close(); err != nil {
+		return fmt.Errorf("failed to close session: %w", err)
+	}
+
+	// 从存储中删除
+	if err := m.storage.DeleteSession(ctx, sessionID); err != nil {
+		return fmt.Errorf("failed to delete session from storage: %w", err)
+	}
+
+	// 从内存中移除
+	delete(m.sessions, sessionID)
+
+	// 如果删除的是当前会话，清空当前会话 ID
+	if m.currentSessionID == sessionID {
+		m.currentSessionID = ""
+	}
+
+	return nil
+}
+
 // SwitchSession 切换到指定会话
 func (m *Manager) SwitchSession(sessionID string) (*Session, error) {
 	m.mu.Lock()
@@ -457,6 +488,191 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// LoadSession 加载并恢复会话
+func (m *Manager) LoadSession(ctx context.Context, sessionID string) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 检查会话是否已在内存中
+	if sess, exists := m.sessions[sessionID]; exists {
+		return sess, nil
+	}
+
+	// 从存储加载会话元数据
+	sess, err := m.storage.LoadSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load session: %w", err)
+	}
+
+	// 创建 Agent 实例
+	agent, err := m.agentFactory(sess)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent: %w", err)
+	}
+
+	// 设置 Agent
+	sess.Agent = agent
+
+	// 加载消息历史
+	messages, err := m.storage.LoadMessages(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load messages: %w", err)
+	}
+
+	// 恢复消息到内存
+	sess.Messages = messages
+
+	// 添加到内存
+	m.sessions[sessionID] = sess
+
+	return sess, nil
+}
+
+// RestoreSession 恢复已关闭的会话
+func (m *Manager) RestoreSession(ctx context.Context, sessionID string) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 检查会话是否已在内存中
+	if sess, exists := m.sessions[sessionID]; exists {
+		// 激活会话
+		sess.SetStatus(SessionActive)
+		return sess, nil
+	}
+
+	// 从存储加载
+	sess, err := m.storage.LoadSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load session: %w", err)
+	}
+
+	// 创建 Agent 实例
+	agent, err := m.agentFactory(sess)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent: %w", err)
+	}
+
+	// 设置 Agent 和状态
+	sess.Agent = agent
+	sess.Status = SessionActive
+
+	// 加载消息历史
+	messages, err := m.storage.LoadMessages(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load messages: %w", err)
+	}
+
+	sess.Messages = messages
+
+	// 添加到内存
+	m.sessions[sessionID] = sess
+
+	return sess, nil
+}
+
+// SetSessionDescription 设置会话描述
+func (m *Manager) SetSessionDescription(ctx context.Context, sessionID string, description string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// 更新描述
+	session.SetDescription(description)
+
+	// 持久化
+	if err := m.storage.SaveSession(ctx, session); err != nil {
+		return fmt.Errorf("failed to save session: %w", err)
+	}
+
+	return nil
+}
+
+// AddSessionTag 添加会话标签
+func (m *Manager) AddSessionTag(ctx context.Context, sessionID string, tag string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// 添加标签
+	session.AddTag(tag)
+
+	// 持久化
+	if err := m.storage.SaveSession(ctx, session); err != nil {
+		return fmt.Errorf("failed to save session: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveSessionTag 移除会话标签
+func (m *Manager) RemoveSessionTag(ctx context.Context, sessionID string, tag string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	// 移除标签
+	session.RemoveTag(tag)
+
+	// 持久化
+	if err := m.storage.SaveSession(ctx, session); err != nil {
+		return fmt.Errorf("failed to save session: %w", err)
+	}
+
+	return nil
+}
+
+// GetSessionStatistics 获取会话统计信息
+func (m *Manager) GetSessionStatistics(sessionID string) (SessionStats, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return SessionStats{}, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return session.GetStatistics(), nil
+}
+
+// RecordToolExecution 记录工具执行
+func (m *Manager) RecordToolExecution(sessionID string, execution ToolExecution) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	session.RecordToolExecution(execution)
+	return nil
+}
+
+// GetToolExecutions 获取会话的工具执行记录
+func (m *Manager) GetToolExecutions(sessionID string) ([]ToolExecution, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	session, ok := m.sessions[sessionID]
+	if !ok {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return session.GetToolExecutions(), nil
 }
 
 // 辅助函数

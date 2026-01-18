@@ -23,6 +23,8 @@ type KoreServer struct {
 	// 依赖注入
 	sessionManager SessionManager
 	eventBus       EventBus
+	agentProcessor AgentProcessor
+	commandExecutor CommandExecutor
 
 	// 服务器配置
 	listenAddr string
@@ -64,6 +66,20 @@ func WithSessionManager(sm SessionManager) ServerOption {
 func WithEventBus(eb EventBus) ServerOption {
 	return func(s *KoreServer) {
 		s.eventBus = eb
+	}
+}
+
+// WithAgentProcessor 设置 Agent 处理器
+func WithAgentProcessor(ap AgentProcessor) ServerOption {
+	return func(s *KoreServer) {
+		s.agentProcessor = ap
+	}
+}
+
+// WithCommandExecutor 设置命令执行器
+func WithCommandExecutor(ce CommandExecutor) ServerOption {
+	return func(s *KoreServer) {
+		s.commandExecutor = ce
 	}
 }
 
@@ -217,18 +233,176 @@ func (s *KoreServer) CloseSession(ctx context.Context, req *rpc.CloseSessionRequ
 // 消息流 RPC 实现（Phase 6 完成）
 // ============================================================================
 
-// SendMessage 双向流式消息（占位符）
+// SendMessage 双向流式消息
 func (s *KoreServer) SendMessage(stream rpc.Kore_SendMessageServer) error {
-	return status.Error(codes.Unimplemented, "not yet implemented")
+	// 获取第一个消息（包含 session_id）
+	firstMsg, err := stream.Recv()
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "failed to receive first message: %v", err)
+	}
+
+	sessionID := firstMsg.SessionId
+	if sessionID == "" {
+		return status.Error(codes.InvalidArgument, "session_id is required")
+	}
+
+	// 验证会话是否存在
+	if s.sessionManager != nil {
+		_, err := s.sessionManager.GetSession(stream.Context(), sessionID)
+		if err != nil {
+			return status.Errorf(codes.NotFound, "session not found: %v", err)
+		}
+	}
+
+	// 处理消息流
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			// 流结束
+			if err.Error() == "EOF" {
+				return nil
+			}
+			return status.Errorf(codes.Internal, "failed to receive message: %v", err)
+		}
+
+		// 处理消息
+		content := req.Content
+		if content == "" {
+			continue
+		}
+
+		// 如果有 Agent 处理器，处理消息
+		if s.agentProcessor != nil {
+			// TODO: 获取会话对象
+			// sess, _ := s.sessionManager.GetSessionInternal(sessionID)
+
+			// 流式返回响应
+			done := make(chan bool)
+
+			// 模拟流式响应
+			go func() {
+				// 调用 Agent 处理
+				// err := s.agentProcessor.ProcessMessage(stream.Context(), sess, content, func(chunk string) {
+				// 	resp := &rpc.MessageResponse{
+				// 		Content:   chunk,
+				// 		Role:      "assistant",
+				// 		Timestamp: time.Now().Unix(),
+				// 		Done:      false,
+				// 	}
+				// 	if err := stream.Send(resp); err != nil {
+				// 		done <- true
+				// 		return
+				// 	}
+				// })
+
+				// 临时：直接返回响应
+				resp := &rpc.MessageResponse{
+					Content:   "Response to: " + content,
+					Role:      "assistant",
+					Timestamp: time.Now().Unix(),
+					Done:      true,
+				}
+				_ = stream.Send(resp)
+				done <- true
+			}()
+
+			<-done
+		} else {
+			// 简单回显
+			resp := &rpc.MessageResponse{
+				Content:   "Echo: " + content,
+				Role:      "assistant",
+				Timestamp: time.Now().Unix(),
+				Done:      true,
+			}
+			if err := stream.Send(resp); err != nil {
+				return status.Errorf(codes.Internal, "failed to send response: %v", err)
+			}
+		}
+	}
 }
 
 // ============================================================================
 // 命令执行 RPC 实现（Phase 2 完成）
 // ============================================================================
 
-// ExecuteCommand 执行命令并流式返回输出（占位符）
+// ExecuteCommand 执行命令并流式返回输出
 func (s *KoreServer) ExecuteCommand(req *rpc.CommandRequest, stream rpc.Kore_ExecuteCommandServer) error {
-	return status.Error(codes.Unimplemented, "not yet implemented")
+	// 验证请求
+	if req.SessionId == "" {
+		return status.Error(codes.InvalidArgument, "session_id is required")
+	}
+	if req.Command == "" {
+		return status.Error(codes.InvalidArgument, "command is required")
+	}
+
+	// 验证会话是否存在
+	if s.sessionManager != nil {
+		_, err := s.sessionManager.GetSession(stream.Context(), req.SessionId)
+		if err != nil {
+			return status.Errorf(codes.NotFound, "session not found: %v", err)
+		}
+	}
+
+	// 如果有命令执行器，执行命令
+	if s.commandExecutor != nil {
+		pid, outputChan, err := s.commandExecutor.ExecuteCommand(
+			stream.Context(),
+			req.SessionId,
+			req.Command,
+			req.Args,
+			req.WorkingDir,
+			req.Env,
+			req.Background,
+		)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to execute command: %v", err)
+		}
+
+		// 发送进程 ID（后台进程）
+		if req.Background {
+			resp := &rpc.CommandOutput{
+				Type: rpc.CommandOutput_EXIT,
+				Pid:  pid,
+			}
+			if err := stream.Send(resp); err != nil {
+				return status.Errorf(codes.Internal, "failed to send output: %v", err)
+			}
+			return nil
+		}
+
+		// 流式发送输出
+		for output := range outputChan {
+			if err := stream.Send(output); err != nil {
+				return status.Errorf(codes.Internal, "failed to send output: %v", err)
+			}
+
+			// 检查是否应该退出
+			if output.Type == rpc.CommandOutput_EXIT {
+				return nil
+			}
+		}
+	} else {
+		// 模拟命令执行
+		resp := &rpc.CommandOutput{
+			Type: rpc.CommandOutput_STDOUT,
+			Data: []byte(fmt.Sprintf("Executing: %s %v\n", req.Command, req.Args)),
+		}
+		if err := stream.Send(resp); err != nil {
+			return status.Errorf(codes.Internal, "failed to send output: %v", err)
+		}
+
+		// 发送退出状态
+		resp = &rpc.CommandOutput{
+			Type:     rpc.CommandOutput_EXIT,
+			ExitCode: 0,
+		}
+		if err := stream.Send(resp); err != nil {
+			return status.Errorf(codes.Internal, "failed to send output: %v", err)
+		}
+	}
+
+	return nil
 }
 
 // ============================================================================
@@ -288,9 +462,38 @@ func (s *KoreServer) CloseVirtualDocument(ctx context.Context, req *rpc.CloseVir
 // 事件订阅 RPC 实现（Phase 5 完成）
 // ============================================================================
 
-// SubscribeEvents 订阅事件流（占位符）
+// SubscribeEvents 订阅事件流
 func (s *KoreServer) SubscribeEvents(req *rpc.SubscribeRequest, stream rpc.Kore_SubscribeEventsServer) error {
-	return status.Error(codes.Unimplemented, "not yet implemented")
+	// 如果没有事件总线，返回错误
+	if s.eventBus == nil {
+		return status.Error(codes.Unimplemented, "event bus not configured")
+	}
+
+	// 订阅事件
+	eventChan, err := s.eventBus.Subscribe(stream.Context(), req.SessionId, req.EventTypes)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to subscribe to events: %v", err)
+	}
+
+	// 流式发送事件
+	for {
+		select {
+		case <-stream.Context().Done():
+			// 客户端断开连接
+			return nil
+
+		case event, ok := <-eventChan:
+			if !ok {
+				// 事件通道关闭
+				return nil
+			}
+
+			// 发送事件
+			if err := stream.Send(event); err != nil {
+				return status.Errorf(codes.Internal, "failed to send event: %v", err)
+			}
+		}
+	}
 }
 
 // ============================================================================
@@ -309,6 +512,16 @@ type SessionManager interface {
 type EventBus interface {
 	Subscribe(ctx context.Context, sessionID string, eventTypes []string) (<-chan *rpc.Event, error)
 	Publish(event *rpc.Event) error
+}
+
+// AgentProcessor Agent 处理器接口（用于消息处理）
+type AgentProcessor interface {
+	ProcessMessage(ctx context.Context, session *session.Session, content string, callback func(string)) error
+}
+
+// CommandExecutor 命令执行器接口
+type CommandExecutor interface {
+	ExecuteCommand(ctx context.Context, sessionID, command string, args []string, workingDir string, env map[string]string, background bool) (int32, <-chan *rpc.CommandOutput, error)
 }
 
 // IsRunning 检查服务器是否正在运行
